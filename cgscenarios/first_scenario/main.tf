@@ -16,7 +16,6 @@ terraform {
 
 provider "aws" {
   region  = var.region
-  profile = var.profile
 }
 
 # Random suffix so bucket names don't collide globally

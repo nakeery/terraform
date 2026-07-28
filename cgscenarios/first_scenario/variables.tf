@@ -5,8 +5,8 @@ variable "region" {
   default     = "us-east-1"
 }
 
-variable "profile" {
-  description = "AWS profile to use"
-  type        = string
-  default     = "nakeery"
-}
+# variable "profile" {
+#   description = "AWS profile to use"
+#   type        = string
+#   profile     = $env:AWS_PROFILE 
+# }
