@@ -47,7 +47,7 @@ variable "availability_zones" {
 variable "kubernetes_version" {
   description = "EKS Kubernetes version"
   type        = string
-  default     = "1.30"
+  default     = "1.36"
 }
 
 # t3.medium is a reasonable balance of cost vs. capability

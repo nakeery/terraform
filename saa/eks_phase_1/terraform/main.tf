@@ -28,12 +28,11 @@ terraform {
 
 provider "aws" {
   region = var.region
-  # profile = $env:AWS_PROFILE 
   default_tags {
     tags = {
-      Project     = "eks-portfolio"
+      Project     = var.project_name
       ManagedBy   = "terraform"
-      Environment = "learning"
+      Environment = var.environment
     }
   }
 }
