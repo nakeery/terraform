@@ -1,3 +1,4 @@
+#IDENTITY
 variable "region" {
   description = "AWS region to deploy into"
   type        = string
@@ -22,6 +23,8 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+# NETWORKING 
+
 # We split the /16 into smaller /24 subnets across 2 AZs.
 # Public subnets host the NAT gateway and load balancers.
 # Private subnets host the actual EKS worker nodes -
@@ -44,11 +47,15 @@ variable "availability_zones" {
   default     = ["us-east-1a", "us-east-1b"]
 }
 
+# EKS CLUSTER
 variable "kubernetes_version" {
   description = "EKS Kubernetes version"
   type        = string
+  #aws eks describe-cluster-versions --include-all --query "clusterVersions[?versionStatus=='STANDARD_SUPPORT'].{Version:clusterVersion,EndOfStandardSupport:endOfStandardSupportDate}" --output table
   default     = "1.36"
 }
+
+# NODE SIZING 
 
 # t3.medium is a reasonable balance of cost vs. capability
 # for a learning cluster. Roughly $0.0416/hour per node.

@@ -63,7 +63,7 @@ resource "aws_subnet" "private" {
 }
 
 # -------------------------------------------------------
-# NAT GATEWAY
+# NAT GATEWAY (Router)
 # Lets private subnet resources (worker nodes) reach the
 # internet outbound (e.g. to pull container images) without
 # being directly reachable from the internet inbound.

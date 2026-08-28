@@ -47,16 +47,19 @@ resource "aws_iam_role" "node" {
   })
 }
 
+# lets kubelet talk to the EKS API, report node status
 resource "aws_iam_role_policy_attachment" "node_worker_policy" {
   role       = aws_iam_role.node.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
 }
 
+# lets the VPC CNI plugin manage ENIs/IPs for pod networking
 resource "aws_iam_role_policy_attachment" "node_cni_policy" {
   role       = aws_iam_role.node.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
+# lets nodes pull images from ECR
 resource "aws_iam_role_policy_attachment" "node_ecr_policy" {
   role       = aws_iam_role.node.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
