@@ -1,0 +1,31 @@
+# Checkov config file - run with: checkov --config-file policy/checkov.yaml
+#
+# TODO (yours to complete): run checkov against this project's raw
+# Terraform first, with no config file, and read the output:
+#
+#   checkov -d terraform/
+#
+# It will very likely flag `endpoint_public_access = true` in eks.tf -
+# that's the documented, deliberate tradeoff from this project's own
+# comment ("public access is fine so you can run kubectl from your
+# laptop... worth doing as a follow-up exercise"). Find the exact
+# check ID checkov reports for that finding and add it to skip-check
+# below, WITH a reason - that's the actual skill being demonstrated
+# here: knowing the difference between "fix it" and "consciously
+# accept it with a paper trail," not just suppressing everything that
+# turns up red.
+#
+# Do NOT add anything to this list without a comment explaining why -
+# an unexplained skip list is worse than no policy-as-code at all.
+
+directory:
+  - terraform
+
+skip-check:
+  # - CKV_AWS_XXXX  # endpoint_public_access - accepted for local kubectl
+  #                  # access during learning; see eks.tf comment.
+  #                  # Revisit if this ever needs to be production-grade
+  #                  # (endpoint_private_access + a bastion/VPN instead).
+
+compact: true
+quiet: false

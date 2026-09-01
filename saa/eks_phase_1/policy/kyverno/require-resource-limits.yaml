@@ -1,0 +1,38 @@
+# Requires every container to declare CPU/memory requests and limits -
+# the same fields eks_phase_1/k8s/nginx-deployment.yaml already sets,
+# for the same reason called out in that file's own comment: prevents
+# one pod from starving others sharing the same node.
+#
+# TODO (yours to complete): this is the simplest of the three policy
+# prototypes - a good one to start with if you're learning Kyverno's
+# pattern syntax before tackling the other two. Try tightening it
+# further yourself: require specific minimum/maximum values instead
+# of just "the field exists" (Kyverno's pattern language supports
+# range checks, not just presence checks - look at how `<=` and `>=`
+# work inside a `validate.pattern` block).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-requests-and-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Containers must set resources.requests and resources.limits for both cpu and memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
