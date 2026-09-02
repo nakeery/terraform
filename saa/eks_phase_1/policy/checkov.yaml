@@ -26,6 +26,7 @@ skip-check:
   #                  # access during learning; see eks.tf comment.
   #                  # Revisit if this ever needs to be production-grade
   #                  # (endpoint_private_access + a bastion/VPN instead).
+  - CKV_AWS_339  # Kubernetes 1.36 not available in supported versions.
 
 compact: true
 quiet: false
