@@ -1,0 +1,31 @@
+# Requires every container to declare CPU/memory requests and limits -
+# the same fields range-01-eks-secure-baseline/k8s/nginx-deployment.yaml already sets,
+# for the same reason called out in that file's own comment: prevents
+# one pod from starving others sharing the same node. This policy
+# enforces presence of the requests/limits fields on every container.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-requests-and-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Containers must set resources.requests and resources.limits for both cpu and memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

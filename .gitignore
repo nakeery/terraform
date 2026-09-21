@@ -3,3 +3,5 @@
 *.tfvars
 *.backup*
 *.zip
+# Private companion notes, not part of the submitted repo
+REFERENCE.md

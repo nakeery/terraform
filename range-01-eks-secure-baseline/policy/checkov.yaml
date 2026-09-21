@@ -1,0 +1,39 @@
+# Checkov config file - run with: checkov --config-file policy/checkov.yaml
+#
+# The skip-check list documents findings consciously accepted for this
+# range, each with a reason. Anything skipped without a documented
+# reason should be treated as a policy gap, not a pass.
+
+directory:
+  - terraform
+
+skip-check:
+  # endpoint_public_access = true is a deliberate tradeoff so kubectl
+  # reaches the cluster without a bastion/VPN (see eks.tf). A hardened
+  # production build would use a private-only endpoint instead.
+  - CKV_AWS_39   # EKS public endpoint disabled - accepted, see eks.tf
+  - CKV_AWS_38   # EKS public endpoint open to 0.0.0.0/0 - accepted, see eks.tf
+  - CKV_AWS_339  # Kubernetes version pinned to 1.36; not in checkov's supported list
+
+  # The checks below are consciously accepted for this teaching baseline,
+  # each with a reason. They are scope decisions, not oversights - the
+  # point of listing them here is that an accepted risk is documented, not
+  # silently failing. A production hardening pass would revisit each.
+  - CKV_AWS_58   # KMS envelope encryption for Secrets not configured. Left
+                 # out to keep the baseline free of a customer-managed KMS
+                 # key (and its cost); production would add a CMK plus an
+                 # encryption_config block on aws_eks_cluster.main.
+  - CKV2_AWS_11  # VPC flow logging disabled. A billable feature not needed
+                 # to teach the EKS baseline; enable with a flow-log +
+                 # CloudWatch/S3 destination in a production build.
+  - CKV2_AWS_12  # Default VPC security group not locked down. This config
+                 # never attaches workloads to the default SG (EKS creates
+                 # its own); accepted rather than adding a default-SG
+                 # no-ingress/no-egress resource.
+  - CKV_AWS_130  # Public subnets set map_public_ip_on_launch = true. These
+                 # subnets exist specifically to host the NAT gateway and
+                 # internet-facing load balancers; a public IP on launch is
+                 # intended here. Nodes launch in the private subnets.
+
+compact: true
+quiet: false

@@ -1,0 +1,44 @@
+# Codifies exactly the securityContext fields range-01-eks-secure-baseline's own
+# nginx-deployment.yaml already hand-writes: runAsNonRoot and
+# readOnlyRootFilesystem. Rather than relying on those fields being
+# hand-written correctly in each manifest, this policy makes them a
+# structural guarantee across every manifest admitted to the cluster.
+#
+# Should PASS cleanly against range-01-eks-secure-baseline/k8s/nginx-deployment.yaml.
+# Should FAIL against range-02-eks-attack-chain/k8s/vulnerable-dashboard.yaml,
+# which sets no securityContext at all.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-nonroot-and-readonly-fs
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-run-as-nonroot
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Containers must set securityContext.runAsNonRoot: true."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  runAsNonRoot: "true"
+
+    - name: require-readonly-root-filesystem
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Containers must set securityContext.readOnlyRootFilesystem: true."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: "true"

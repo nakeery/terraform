@@ -1,0 +1,94 @@
+# ATTACK CHAIN STEP 1 - EXPOSED ADMIN TOOLING, NO AUTH
+#
+# This is the entry point of the attack chain, modeled directly on
+# the 2018 Tesla breach: an internet-facing admin/dashboard-style pod
+# with no authentication in front of it, bound to a service account
+# that has cluster-admin. In the real incident this was the
+# Kubernetes Dashboard itself; here it's simplified to a generic pod
+# standing in for "whatever internet-facing thing got left open" -
+# the specific app matters less than the shape of the mistake.
+#
+# Compare directly against range-01-eks-secure-baseline/k8s/nginx-deployment.yaml:
+# that file's entire securityContext block (non-root, read-only
+# root filesystem, dropped capabilities, resource limits) is simply
+# absent here. Nothing stops privileged: true, nothing stops running
+# as root, nothing stops unbounded resource usage.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vulnerable-dashboard-sa
+---
+# ATTACK CHAIN STEP 3 (RBAC half) - OVER-BROAD ROLE BINDING
+#
+# Binding cluster-admin to a workload's service account means: any
+# process running as this pod, or anyone who steals this pod's mounted
+# service account token, can do literally anything in the cluster -
+# read every Secret in every namespace, create/delete anything,
+# modify RBAC itself. Compare against how narrowly-scoped IRSA roles
+# are supposed to work (see range-01-eks-secure-baseline/terraform/iam.tf's IRSA
+# comments) - this is what NOT doing that looks like, made concrete
+# rather than just "no IRSA roles were created yet."
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vulnerable-dashboard-binding
+subjects:
+  - kind: ServiceAccount
+    name: vulnerable-dashboard-sa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-dashboard
+  labels:
+    app: vulnerable-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vulnerable-dashboard
+  template:
+    metadata:
+      labels:
+        app: vulnerable-dashboard
+    spec:
+      serviceAccountName: vulnerable-dashboard-sa
+      # hostNetwork places this pod directly on the node's network
+      # namespace, so it can reach the node's IMDS endpoint
+      # (169.254.169.254) and steal the node role's credentials - the
+      # container-breakout half of the chain, alongside the RBAC/IMDS
+      # half. Diff this whole spec block against
+      # range-01-eks-secure-baseline/k8s/nginx-deployment.yaml's
+      # containers[0] block to see the securityContext hardening that is
+      # deliberately absent here.
+      hostNetwork: true
+      containers:
+        - name: app
+          image: nginx:1.27-alpine # stand-in image for an exposed app
+          # privileged: true removes container isolation entirely -
+          # host filesystem and devices become reachable from inside.
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: leaked-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vulnerable-dashboard-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: vulnerable-dashboard
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
