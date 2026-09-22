@@ -117,10 +117,13 @@ resource "null_resource" "pgvector_index" {
   depends_on = [null_resource.pgvector_table]
 }
 
-# IAM addition for Bedrock to reach the Aurora vector store via Data API
+# IAM addition for the knowledge base service role to reach the Aurora vector
+# store via the RDS Data API. Attached here (next to the cluster it grants
+# access to) rather than in iam.tf so the Aurora-specific permissions travel
+# with the Aurora resources.
 resource "aws_iam_role_policy" "bedrock_rds_data" {
   name = "range-04-bedrock-rds-data-${var.scenario_id}"
-  role = aws_iam_role.bedrock_agent.id
+  role = aws_iam_role.knowledge_base.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -132,6 +135,16 @@ resource "aws_iam_role_policy" "bedrock_rds_data" {
           "rds-data:ExecuteStatement",
           "rds-data:BatchExecuteStatement"
         ]
+        Resource = aws_rds_cluster.kb.arn
+      },
+      {
+        # CreateKnowledgeBase validation calls the RDS control-plane
+        # DescribeDBClusters API separately from the Data API above; without
+        # this the knowledge base fails to create with an AccessDeniedException
+        # on rds:DescribeDBClusters.
+        Sid      = "RdsDescribeAccess"
+        Effect   = "Allow"
+        Action   = ["rds:DescribeDBClusters"]
         Resource = aws_rds_cluster.kb.arn
       },
       {

@@ -32,6 +32,10 @@ provider "aws" {
       Scenario    = "range-04-bedrock-rag-injection"
       Environment = "training"
       ManagedBy   = "terraform"
+      # Deliberate marker so this is unmistakable in the AWS console -
+      # never let this tag be confused with real infrastructure. Every
+      # bucket, role, Lambda and agent below is intentionally insecure.
+      Purpose = "INTENTIONALLY-VULNERABLE-DO-NOT-USE-FOR-REAL-WORKLOADS"
     }
   }
 }

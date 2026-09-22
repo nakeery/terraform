@@ -20,14 +20,24 @@ output "sensitive_data_bucket" {
   value       = aws_s3_bucket.sensitive_data.bucket
 }
 
-output "bedrock_agent_id" {
-  description = "Bedrock agent ID"
-  value       = aws_bedrockagent_agent.assistant.agent_id
+output "harness_arn" {
+  description = "AgentCore harness ARN - needed to invoke the assistant (InvokeHarness)"
+  value       = aws_bedrockagentcore_harness.assistant.arn
 }
 
-output "bedrock_agent_alias_id" {
-  description = "Bedrock agent alias ID - needed to invoke the agent"
-  value       = aws_bedrockagent_agent_alias.live.agent_alias_id
+output "harness_id" {
+  description = "AgentCore harness ID"
+  value       = aws_bedrockagentcore_harness.assistant.harness_id
+}
+
+output "gateway_id" {
+  description = "AgentCore gateway ID backing the assistant's MCP tools"
+  value       = aws_bedrockagentcore_gateway.tools.gateway_id
+}
+
+output "gateway_url" {
+  description = "AgentCore gateway MCP endpoint URL"
+  value       = aws_bedrockagentcore_gateway.tools.gateway_url
 }
 
 output "knowledge_base_id" {
@@ -56,10 +66,15 @@ output "scenario_summary" {
 
     Your goal: pivot from the knowledge base bucket
     into sensitive AWS resources using indirect
-    prompt injection against the Bedrock agent.
+    prompt injection against the AgentCore assistant.
 
-    Hint: What happens when the agent retrieves
+    Hint: What happens when the assistant retrieves
     a document that contains instructions?
     =============================================
   EOT
+}
+
+output "warning" {
+  description = "Reminder that everything in this scenario is intentionally insecure"
+  value       = "INTENTIONALLY VULNERABLE. This stack builds an over-privileged, prompt-injectable AI assistant for training only. Deploy in an isolated sandbox account, walk the chain, then 'terraform destroy'. Never point real workloads at it."
 }

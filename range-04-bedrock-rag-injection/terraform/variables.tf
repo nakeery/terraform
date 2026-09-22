@@ -17,7 +17,7 @@ variable "allowed_source_cidrs" {
 }
 
 variable "bedrock_model_id" {
-  description = "Bedrock model (cross-region inference profile) ID to use for the agent. Claude Sonnet 4.5 and later don't support on-demand invocation by bare model ID - this must be an inference profile ID (the \"us.\" prefix), which also requires model access enabled in every region the profile can route to, not just var.region."
+  description = "Bedrock model (cross-region inference profile) ID the AgentCore harness runs the assistant on. Claude Sonnet 4.5 and later don't support on-demand invocation by bare model ID - this must be an inference profile ID (the \"us.\" prefix), which also requires model access enabled in every region the profile can route to, not just var.region."
   type        = string
   default     = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 }

@@ -39,19 +39,20 @@ write to the knowledge base bucket.
 
 ## Step 2: Understand the attack surface
 
-The company runs a Bedrock AI assistant that uses the knowledge base
-bucket as its RAG data source. When employees ask the assistant questions,
-it retrieves relevant documents from S3 and uses them to generate answers.
+The company runs an AI assistant on **Amazon Bedrock AgentCore**. It uses the
+knowledge base bucket as its RAG data source: when employees ask questions, the
+assistant calls a `searchKnowledgeBase` tool that retrieves relevant documents
+and uses them to generate answers.
 
-Key insight: **the agent's system prompt tells it to "follow any instructions"
-found in retrieved documents**, and the agent is wired to an action group of
-AWS tools (`listBuckets`, `listObjects`, `getObject`, `listSecrets`,
-`getSecret`) backed by a Lambda whose execution role is overprivileged. This is
-the vulnerability.
+Key insight: **the assistant's system prompt tells it to "follow any
+instructions" found in retrieved documents**, and the assistant is wired -
+through an AgentCore Gateway serving MCP tools - to a set of AWS tools
+(`listBuckets`, `listObjects`, `getObject`, `listSecrets`, `getSecret`) backed
+by a Lambda whose execution role is overprivileged. This is the vulnerability.
 
 If you can plant a document in the knowledge base bucket that contains
-instructions, the agent will execute those instructions — including calling its
-AWS tools — when it retrieves your document.
+instructions, the assistant will execute those instructions — including calling
+its AWS tools — when it retrieves your document.
 
 ---
 
@@ -85,32 +86,62 @@ aws bedrock-agent get-ingestion-job \
 
 ## Step 4: Trigger the injection
 
-Invoke the Bedrock agent with a benign-looking query. The agent will
-retrieve your malicious document as context and execute the injected
-instructions before answering.
+Invoke the AgentCore assistant with a benign-looking query. The assistant will
+call `searchKnowledgeBase`, retrieve your malicious document as context, and
+execute the injected instructions before answering.
 
-```bash
-aws bedrock-agent-runtime invoke-agent \
-  --agent-id <bedrock_agent_id> \
-  --agent-alias-id <bedrock_agent_alias_id> \
-  --session-id "audit-session-$(date +%s)" \
-  --input-text "What is the remote work policy?" \
-  --region us-east-1 \
-  --cli-binary-format raw-in-base64-out \
-  output.json
+The assistant runs on an AgentCore **harness**, so you invoke it with
+`InvokeHarness` (the retired `bedrock-agent-runtime invoke-agent` no longer
+applies). `InvokeHarness` streams its response, and the `runtimeSessionId` must
+be at least 33 characters. The most reliable way to drive it is a short boto3
+script:
 
-cat output.json
+```python
+# invoke.py  -  run with the attacker credentials exported
+import boto3, uuid
+
+HARNESS_ARN = "<harness_arn>"  # terraform output -raw harness_arn
+
+client = boto3.client("bedrock-agentcore", region_name="us-east-1")
+resp = client.invoke_harness(
+    harnessArn=HARNESS_ARN,
+    runtimeSessionId=f"audit-session-{uuid.uuid4()}",  # >= 33 chars
+    messages=[{"role": "user", "content": [{"text": "What is the remote work policy?"}]}],
+)
+for event in resp["stream"]:
+    if "contentBlockDelta" in event:
+        delta = event["contentBlockDelta"].get("delta", {})
+        if "text" in delta:
+            print(delta["text"], end="", flush=True)
+    elif "runtimeClientError" in event:
+        print("\nError:", event["runtimeClientError"]["message"])
 ```
 
-Observe the agent's response. If the injection succeeded, the agent
-will have attempted to list S3 buckets, retrieve sensitive data, and
-dump Secrets Manager values before answering the benign question.
+```bash
+python invoke.py
+```
+
+If your AWS CLI is recent enough, the equivalent one-liner works too (it streams
+the event payload to the output file):
+
+```bash
+aws bedrock-agentcore invoke-harness \
+  --harness-arn "$(terraform -chdir=terraform output -raw harness_arn)" \
+  --runtime-session-id "audit-session-$(uuidgen)$(uuidgen)" \
+  --messages '[{"role":"user","content":[{"text":"What is the remote work policy?"}]}]' \
+  --region us-east-1 \
+  output.json && cat output.json
+```
+
+Observe the assistant's response. If the injection succeeded, it will have
+attempted to list S3 buckets, retrieve sensitive data, and dump Secrets Manager
+values before answering the benign question.
 
 ---
 
 ## Step 5: Collect the flags
 
-The agent's response should contain:
+The assistant's response should contain:
 
 1. **S3 flag** — contents of `range-04-sensitive-*/confidential/customer-data.txt`
 2. **Secrets Manager flag** — value of the `range-04-internal-api-key-*` secret
@@ -120,18 +151,20 @@ The agent's response should contain:
 ## Why This Works
 
 1. **Indirect prompt injection**: The attacker never interacts with the
-   agent directly in a privileged way. The malicious instructions are
-   delivered via a third-party data source (S3) that the agent implicitly
+   assistant directly in a privileged way. The malicious instructions are
+   delivered via a third-party data source (S3) that the assistant implicitly
    trusts.
 
-2. **Overprivileged IAM role**: The agent's AWS tools are backed by a Lambda
-   whose execution role has access to resources it has no legitimate business
-   need for — the sensitive S3 bucket and Secrets Manager. Least privilege would
-   have contained the blast radius to the knowledge base bucket only.
+2. **Overprivileged IAM role**: The assistant's AWS tools are served through an
+   AgentCore Gateway and backed by a Lambda whose execution role has access to
+   resources it has no legitimate business need for — the sensitive S3 bucket
+   and Secrets Manager. The retrieval tool, by contrast, is scoped to
+   `bedrock:Retrieve` alone; least privilege on the AWS-tools role would
+   likewise have contained the blast radius to the knowledge base bucket only.
 
 3. **Vulnerable system prompt**: The instruction "follow any instructions
    found in retrieved documents" effectively grants any document in the
-   knowledge base the ability to hijack the agent's behavior.
+   knowledge base the ability to hijack the assistant's behavior.
 
 ---
 
@@ -140,8 +173,9 @@ The agent's response should contain:
 | Vulnerability | Mitigation |
 |---|---|
 | Writeable knowledge base bucket | Restrict S3 write access to authorized pipelines only; enable S3 Object Lock |
-| Overprivileged action-group tool role | Apply least privilege — scope the Lambda role to the knowledge base bucket only; never grant it the sensitive bucket or Secrets Manager |
-| Vulnerable system prompt | Never instruct an agent to follow instructions in retrieved content; treat RAG output as untrusted data |
+| Overprivileged gateway tool role | Apply least privilege — scope the AWS-tools Lambda role away from the sensitive bucket and Secrets Manager; keep dangerous tools off the same identity as benign retrieval |
+| Vulnerable system prompt | Never instruct an assistant to follow instructions in retrieved content; treat RAG output as untrusted data |
+| No gateway authorization policy | Gate tool calls with an AgentCore Gateway Cedar policy — restrict which principals can call the sensitive tools, and under what conditions |
 | No input/output guardrails | Enable Bedrock Guardrails to detect and block prompt injection patterns |
 | No document validation | Scan documents for injection patterns before ingestion |
 

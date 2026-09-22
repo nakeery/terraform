@@ -1,18 +1,98 @@
-# -------------------------------------------------------
-# BEDROCK AGENT ACTION-GROUP TOOLS (LAMBDA)
-# A Bedrock agent can only take actions through an action
-# group. This Lambda IS the "AWS tools" the assistant's
-# system prompt refers to. Without it the agent could not
-# read S3 or Secrets Manager no matter what a document told
-# it to do.
+# =======================================================
+# ATTACK CHAIN STEP 4 - THE AGENT'S TOOLS (LAMBDA GATEWAY TARGETS)
 #
-# INTENTIONAL VULNERABILITY: the Lambda's execution role is
-# overprivileged. A helpdesk assistant tool has no business
-# reading the sensitive customer bucket or Secrets Manager,
-# but this role can -- which is exactly what the injected
-# document weaponizes.
-# -------------------------------------------------------
+# Under AgentCore, an assistant reaches AWS through MCP tools served
+# by an AgentCore Gateway (see bedrock.tf). Each tool is backed by a
+# Lambda. We keep the original scenario's split as two separate
+# targets, each with its own execution role:
+#
+#   1. kb_retrieval  - benign. Least privilege: it may only call
+#      bedrock:Retrieve against the knowledge base.
+#   2. agent_tools   - the pivot. INTENTIONALLY OVER-PRIVILEGED: its
+#      execution role can read the sensitive customer bucket and
+#      Secrets Manager, which a helpdesk assistant has no business
+#      touching. That excess is what an indirect prompt-injection
+#      payload turns into data exfiltration.
+#
+# The gateway invokes both using its own service role (see
+# aws_iam_role.gateway); each Lambda then runs as the role below.
+# =======================================================
 
+# -------------------------------------------------------
+# TOOL LAMBDA 1 - KNOWLEDGE-BASE RETRIEVAL  (least privilege)
+# -------------------------------------------------------
+data "archive_file" "kb_retrieval" {
+  type        = "zip"
+  source_file = "${path.module}/../lambda/kb_retrieval.py"
+  output_path = "${path.module}/../lambda/kb_retrieval.zip"
+}
+
+resource "aws_iam_role" "kb_retrieval_lambda" {
+  name = "range-04-kb-retrieval-lambda-${var.scenario_id}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "kb_retrieval_lambda" {
+  name = "range-04-kb-retrieval-lambda-policy-${var.scenario_id}"
+  role = aws_iam_role.kb_retrieval_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "LambdaLogging"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:*"
+      },
+      {
+        # Least privilege: retrieval and nothing else. This is the leg of
+        # the scenario that is SUPPOSED to be safe -- it cannot read the
+        # sensitive bucket or any secret.
+        Sid      = "KnowledgeBaseRetrieve"
+        Effect   = "Allow"
+        Action   = ["bedrock:Retrieve"]
+        Resource = aws_bedrockagent_knowledge_base.main.arn
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "kb_retrieval" {
+  function_name    = "range-04-kb-retrieval-${var.scenario_id}"
+  role             = aws_iam_role.kb_retrieval_lambda.arn
+  runtime          = "python3.12"
+  handler          = "kb_retrieval.handler"
+  filename         = data.archive_file.kb_retrieval.output_path
+  source_code_hash = data.archive_file.kb_retrieval.output_base64sha256
+  timeout          = 30
+  description      = "ACME Corp assistant knowledge-base retrieval (AgentCore gateway target)"
+
+  environment {
+    variables = {
+      KNOWLEDGE_BASE_ID = aws_bedrockagent_knowledge_base.main.id
+    }
+  }
+}
+
+# -------------------------------------------------------
+# TOOL LAMBDA 2 - AWS TOOLS  (INTENTIONALLY OVER-PRIVILEGED)
+#
+# INTENTIONAL VULNERABILITY: this Lambda's execution role can read
+# the sensitive customer bucket and Secrets Manager. A helpdesk
+# assistant tool has no business reading either -- which is exactly
+# what the injected document weaponizes.
+# -------------------------------------------------------
 data "archive_file" "agent_tools" {
   type        = "zip"
   source_file = "${path.module}/../lambda/agent_tools.py"
@@ -87,104 +167,5 @@ resource "aws_lambda_function" "agent_tools" {
   filename         = data.archive_file.agent_tools.output_path
   source_code_hash = data.archive_file.agent_tools.output_base64sha256
   timeout          = 30
-  description      = "ACME Corp assistant AWS tools (Bedrock action group executor)"
-}
-
-resource "aws_lambda_permission" "allow_bedrock" {
-  statement_id  = "AllowBedrockAgentInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.agent_tools.function_name
-  principal     = "bedrock.amazonaws.com"
-  source_arn    = aws_bedrockagent_agent.assistant.agent_arn
-}
-
-# The action group that exposes the Lambda tools to the agent.
-resource "aws_bedrockagent_agent_action_group" "tools" {
-  action_group_name          = "aws-tools"
-  agent_id                   = aws_bedrockagent_agent.assistant.agent_id
-  agent_version              = "DRAFT"
-  skip_resource_in_use_check = true
-  description                = "AWS helper tools for retrieving company resources"
-
-  action_group_executor {
-    lambda = aws_lambda_function.agent_tools.arn
-  }
-
-  function_schema {
-    member_functions {
-      functions {
-        name        = "listBuckets"
-        description = "List the names of all S3 buckets the assistant can see."
-      }
-      functions {
-        name        = "listObjects"
-        description = "List the object keys in a given S3 bucket."
-        parameters {
-          map_block_key = "bucketName"
-          type          = "string"
-          description   = "The name of the S3 bucket to list."
-          required      = true
-        }
-      }
-      functions {
-        name        = "getObject"
-        description = "Retrieve the text contents of an object in an S3 bucket."
-        parameters {
-          map_block_key = "bucketName"
-          type          = "string"
-          description   = "The name of the S3 bucket."
-          required      = true
-        }
-        parameters {
-          map_block_key = "objectKey"
-          type          = "string"
-          description   = "The key (path) of the object to retrieve."
-          required      = true
-        }
-      }
-      functions {
-        name        = "listSecrets"
-        description = "List the names and ARNs of secrets in AWS Secrets Manager."
-      }
-      functions {
-        name        = "getSecret"
-        description = "Retrieve the value of a secret from AWS Secrets Manager."
-        parameters {
-          map_block_key = "secretId"
-          type          = "string"
-          description   = "The name or ARN of the secret to retrieve."
-          required      = true
-        }
-      }
-    }
-  }
-}
-
-# Re-prepare the agent so the DRAFT version includes both the knowledge base
-# association and the action group before the "live" alias snapshots it.
-# The AWS provider does not automatically re-prepare the agent when these
-# separate resources change, so we do it explicitly.
-resource "null_resource" "prepare_agent" {
-  triggers = {
-    agent_id         = aws_bedrockagent_agent.assistant.agent_id
-    action_group     = aws_bedrockagent_agent_action_group.tools.action_group_id
-    kb_association   = aws_bedrockagent_agent_knowledge_base_association.main.id
-    instruction_hash = sha256(aws_bedrockagent_agent.assistant.instruction)
-  }
-
-  provisioner "local-exec" {
-    command = "aws bedrock-agent prepare-agent --agent-id ${aws_bedrockagent_agent.assistant.agent_id} --region ${var.region}"
-  }
-
-  depends_on = [
-    aws_bedrockagent_agent_action_group.tools,
-    aws_bedrockagent_agent_knowledge_base_association.main
-  ]
-}
-
-# Give the prepared DRAFT version time to become PREPARED before the alias
-# captures it.
-resource "time_sleep" "after_prepare" {
-  create_duration = "30s"
-  depends_on      = [null_resource.prepare_agent]
+  description      = "ACME Corp assistant AWS tools (AgentCore gateway target)"
 }
