@@ -1,6 +1,6 @@
 # Offensive Cloud & AI Range
 
-A four-part, progressively-built security range. It tells one deliberate story
+A four-part, progressively-built security range inspired [Rhino Security Labs' Cloudgoat project](https://github.com/rhinosecuritylabs/cloudgoat). It tells one deliberate story
 across four repos: **build a cloud baseline correctly → break its
 infrastructure → escalate its identity layer → attack the AI system on top of
 it.** Each project pairs a documented attack chain with named real-world
