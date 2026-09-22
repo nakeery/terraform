@@ -9,10 +9,6 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
-    opensearch = {
-      source  = "opensearch-project/opensearch"
-      version = "~> 2.2"
-    }
     archive = {
       source  = "hashicorp/archive"
       version = "~> 2.4"
@@ -20,6 +16,10 @@ terraform {
     time = {
       source  = "hashicorp/time"
       version = "~> 0.11"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
   }
 }

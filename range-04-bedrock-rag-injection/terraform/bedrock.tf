@@ -3,114 +3,10 @@
 # Uses the S3 bucket as its data source. The agent
 # retrieves documents from here to answer user queries.
 # This is the RAG pipeline that makes injection possible.
+# Vector store is Aurora PostgreSQL Serverless v2 + pgvector
+# (see aurora.tf) - not OpenSearch Serverless.
 # -------------------------------------------------------
 
-# OpenSearch Serverless collection for the vector store
-resource "aws_opensearchserverless_security_policy" "encryption" {
-  name        = "range-04-kb-enc-${random_id.suffix.hex}"
-  type        = "encryption"
-  description = "Encryption policy for the RAG knowledge-base collection"
-
-  policy = jsonencode({
-    Rules = [
-      {
-        ResourceType = "collection"
-        Resource     = ["collection/range-04-kb-${random_id.suffix.hex}"]
-      }
-    ]
-    AWSOwnedKey = true
-  })
-}
-
-resource "aws_opensearchserverless_security_policy" "network" {
-  name        = "range-04-kb-net-${random_id.suffix.hex}"
-  type        = "network"
-  description = "Network policy for the RAG knowledge-base collection"
-
-  policy = jsonencode([
-    {
-      Rules = [
-        {
-          ResourceType = "collection"
-          Resource     = ["collection/range-04-kb-${random_id.suffix.hex}"]
-        },
-        {
-          ResourceType = "dashboard"
-          Resource     = ["collection/range-04-kb-${random_id.suffix.hex}"]
-        }
-      ]
-      AllowFromPublic = true
-    }
-  ])
-}
-
-resource "aws_opensearchserverless_access_policy" "kb_access" {
-  name        = "range-04-kb-access-${random_id.suffix.hex}"
-  type        = "data"
-  description = "Data access policy for the RAG knowledge base"
-
-  policy = jsonencode([
-    {
-      Rules = [
-        {
-          ResourceType = "index"
-          Resource     = ["index/range-04-kb-${random_id.suffix.hex}/*"]
-          Permission   = ["aoss:*"]
-        },
-        {
-          ResourceType = "collection"
-          Resource     = ["collection/range-04-kb-${random_id.suffix.hex}"]
-          Permission   = ["aoss:*"]
-        }
-      ]
-      # NOTE: caller_identity.arn is the deployer principal, needed so the
-      # opensearch provider can create the vector index. AOSS data-access
-      # policies reject STS assumed-role session ARNs, so apply this range as
-      # an IAM user (not an assumed role) or index/KB creation will 403.
-      Principal = [
-        aws_iam_role.bedrock_agent.arn,
-        data.aws_caller_identity.current.arn
-      ]
-    }
-  ])
-}
-
-resource "aws_opensearchserverless_collection" "kb" {
-  name        = "range-04-kb-${random_id.suffix.hex}"
-  type        = "VECTORSEARCH"
-  description = "Vector store for the AI RAG injection range"
-
-  # Single-AZ: the AWS provider defaults standby_replicas to ENABLED, which
-  # provisions the redundant multi-AZ OCU allocation (~2x cost). Pinned
-  # DISABLED to match the README's ~$350/mo default; set ENABLED (or remove
-  # this line) for the production-shaped ~$700/mo redundant posture.
-  standby_replicas = "DISABLED"
-
-  depends_on = [
-    aws_opensearchserverless_security_policy.encryption,
-    aws_opensearchserverless_security_policy.network,
-    aws_opensearchserverless_access_policy.kb_access
-  ]
-}
-
-# IAM policy addition for Bedrock to access OpenSearch
-resource "aws_iam_role_policy" "bedrock_opensearch" {
-  name = "range-04-bedrock-opensearch-${var.scenario_id}"
-  role = aws_iam_role.bedrock_agent.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["aoss:APIAccessAll"]
-        Resource = aws_opensearchserverless_collection.kb.arn
-      }
-    ]
-  })
-}
-
-# Bedrock Knowledge Base
 resource "aws_bedrockagent_knowledge_base" "main" {
   name        = "range-04-knowledge-base-${var.scenario_id}"
   description = "ACME Corp internal knowledge base - employee handbook and IT docs"
@@ -124,22 +20,25 @@ resource "aws_bedrockagent_knowledge_base" "main" {
   }
 
   storage_configuration {
-    type = "OPENSEARCH_SERVERLESS"
-    opensearch_serverless_configuration {
-      collection_arn    = aws_opensearchserverless_collection.kb.arn
-      vector_index_name = "bedrock-knowledge-base-index"
+    type = "RDS"
+    rds_configuration {
+      resource_arn           = aws_rds_cluster.kb.arn
+      credentials_secret_arn = aws_rds_cluster.kb.master_user_secret[0].secret_arn
+      database_name          = aws_rds_cluster.kb.database_name
+      table_name             = "bedrock_integration.bedrock_kb"
       field_mapping {
-        vector_field   = "bedrock-knowledge-base-default-vector"
-        text_field     = "AMAZON_BEDROCK_TEXT_CHUNK"
-        metadata_field = "AMAZON_BEDROCK_METADATA"
+        primary_key_field = "id"
+        vector_field      = "embedding"
+        text_field        = "chunks"
+        metadata_field    = "metadata"
       }
     }
   }
 
-  # The vector index must exist before the knowledge base can be created.
+  # The pgvector extension, schema, table, and index must exist before the
+  # knowledge base can be created.
   depends_on = [
-    aws_opensearchserverless_collection.kb,
-    opensearch_index.kb
+    null_resource.pgvector_index
   ]
 }
 

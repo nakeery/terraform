@@ -61,7 +61,7 @@ before you deploy:
 |-------|--------------|-----|
 | 01 / 02 (EKS) | **Meaningful hourly cost** | EKS control plane, NAT/NLB, worker nodes bill by the hour - tear down after each session. |
 | 03 (IAM) | **Near-zero** | IAM + S3 only; IAM is free, S3 is a few cents of API calls. Safe to leave up cost-wise (its risk is credential exposure). |
-| 04 (Bedrock RAG) | **Highest, even idle** | OpenSearch Serverless bills per OCU-hour with a multi-OCU minimum (~$350/mo floor, roughly double with redundancy) before any Bedrock charges. Tear it down promptly. |
+| 04 (Bedrock RAG) | **Near-zero** | Vector store is Aurora PostgreSQL Serverless v2, which scales to 0 ACU after ~5 min idle (storage-only cost) and auto-resumes in ~15s. Tear down is about hygiene, not a standing bill. |
 
 ## Layout
 

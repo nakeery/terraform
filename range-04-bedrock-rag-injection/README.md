@@ -14,12 +14,12 @@ the mechanism that turns a foothold into full data exfiltration here is an
 class of misconfiguration, one layer up, now reachable through natural language
 instead of an API call.
 
-**Status: complete.** Both flags are reachable end to end. Unlike the other
-ranges, this one has a real per-hour cost floor - see Cost before deploying.
+**Status: complete.** Both flags are reachable end to end. The vector store
+scales to zero when idle - see Cost before deploying.
 
 **Difficulty**: Medium  
 **Category**: AI / ML Security  
-**Services**: Amazon Bedrock (Agents + Knowledge Bases), Lambda, S3, IAM, Secrets Manager, OpenSearch Serverless  
+**Services**: Amazon Bedrock (Agents + Knowledge Bases), Lambda, S3, IAM, Secrets Manager, Aurora PostgreSQL Serverless v2 (pgvector)  
 **MITRE ATLAS Techniques**: Indirect Prompt Injection, LLM Prompt Injection, Overprivileged IAM Role
 
 ---
@@ -64,9 +64,9 @@ without ever having direct access to them.
 
 - An S3 **knowledge-base bucket** whose policy lets any in-account principal
   write to it - the injection vector.
-- A **Bedrock Knowledge Base** (OpenSearch Serverless vector store) and a
-  **Bedrock Agent** wired to it, with a system prompt that trusts retrieved
-  content.
+- A **Bedrock Knowledge Base** (Aurora PostgreSQL Serverless v2 + pgvector
+  vector store) and a **Bedrock Agent** wired to it, with a system prompt
+  that trusts retrieved content.
 - An **action-group Lambda** exposing AWS tools to the agent, backed by an
   **over-privileged execution role** that can read the sensitive bucket and
   Secrets Manager.
@@ -115,8 +115,12 @@ Retrieve the two flags:
 ### Prerequisites
 - Terraform >= 1.5.0
 - AWS CLI configured with deployment credentials
-- Amazon Bedrock model access enabled for `anthropic.claude-3-sonnet-20240229-v1:0`
-  and `amazon.titan-embed-text-v1` in your account
+- Amazon Bedrock model access enabled for `anthropic.claude-sonnet-4-5-20250929-v1:0`
+  and `amazon.titan-embed-text-v1` in your account. The agent invokes Claude via the
+  `us.anthropic.claude-sonnet-4-5-20250929-v1:0` cross-region inference profile (Claude
+  Sonnet 4.5 doesn't support on-demand invocation by bare model ID), so grant model
+  access in every region that profile can route to (currently us-east-1, us-east-2,
+  us-west-2), not just your deployment region.
 
 ```bash
 cd terraform
@@ -124,7 +128,10 @@ terraform init
 terraform apply -var='allowed_source_cidrs=["YOUR_IP/32"]'
 ```
 
-Deployment takes approximately 5-10 minutes due to OpenSearch Serverless provisioning.
+Deployment takes approximately 10-15 minutes: Aurora cluster/instance
+provisioning, then a short pause while the pgvector extension, schema,
+table, and index get created via the RDS Data API before the knowledge
+base can attach to them.
 
 ### Retrieve starting credentials
 
@@ -143,18 +150,21 @@ trigger ingestion, invoke the agent, and collect both flags.
 
 ## Cost
 
-**Highest in the series, even when idle.** This range is backed by **OpenSearch
-Serverless**, which bills per **OCU** (OpenSearch Compute Unit) **per hour** with
-a **multi-OCU minimum allocated even when nothing is querying it** - roughly
-**$350/month** at the ~2-OCU floor (us-east-1, AWS pricing at time of writing),
-and about double with redundancy enabled, before any Bedrock model-invocation
-charges.
+**Near-zero when idle - same tier as [range-03](../range-03-iam-privilege-escalation/README.md).**
+This range's vector store runs on **Aurora PostgreSQL Serverless v2**, which
+scales down to **0 ACU after ~5 minutes** without a query or ingestion job and
+auto-resumes in about **15 seconds** on the next one. With nothing running,
+you're paying storage only - a few cents a month for a knowledge base this
+small. Compute only bills for the ACU-minutes you're actively walking the
+chain, and Bedrock's own model-invocation charges are unchanged.
 
-That is the opposite posture from
-[range-03](../range-03-iam-privilege-escalation/README.md), which is IAM +
-S3 only and effectively free to leave standing. **Deploy this in a sandbox
-account, walk it, and tear it down the same session** - here that guidance is
-about cost, not just hygiene.
+That's a real change from this range's original profile: it used to run on
+**OpenSearch Serverless**, which held a fixed multi-OCU allocation even fully
+idle - roughly $350/month at the ~2-OCU floor, the one range in the series you
+genuinely couldn't leave standing. Aurora's scale-to-zero closes that gap, so
+the "deploy in a sandbox account, walk it, tear it down" guidance below is now
+about hygiene and credential exposure, the same reason range-03 gives it -
+not a four-figure-a-year bill for forgetting a `terraform destroy`.
 
 ## Teardown
 

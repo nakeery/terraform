@@ -113,18 +113,21 @@ meter at all. This is genuinely safe to leave standing from a *billing*
 standpoint (its real risk is credential exposure, not spend - see the
 `warning` output).
 
-Contrast this deliberately with **`range-04-bedrock-rag-injection`**,
-the AI/agentic entry in the series. That range is backed by **OpenSearch
-Serverless**, which bills per **OCU** (OpenSearch Compute Unit) **per
-hour** and holds a **minimum of ~2 OCUs allocated even when completely
-idle**. At roughly **$0.24 per OCU-hour** (us-east-1, AWS pricing at time
-of writing) that floor works out to **~$350/month just to have it exist**,
-and roughly double (~$700/month, ~4 OCUs) with redundancy enabled - before
-any Bedrock model-invocation charges. That is why `range-04`'s guidance is
-"stand it up, walk it, tear it down the same session" for *cost* reasons,
-while `range-03` is cheap enough to leave running and only wants teardown
-for *hygiene*. Same series, opposite cost postures - and worth
-understanding why before you pick which one to leave up overnight.
+Worth comparing this against **`range-04-bedrock-rag-injection`**, the
+AI/agentic entry in the series - both ranges land in the same near-zero
+tier today, but for structurally different reasons. `range-03` has nothing
+compute-bearing at all: IAM and S3 don't meter by the hour, so there's
+simply no bill to run up. `range-04` has real standing infrastructure
+(Bedrock, Lambda, an Aurora PostgreSQL Serverless v2 vector store) that
+happens to scale to zero when idle rather than having no meter to begin
+with - it bills for the ACU-minutes it's actually doing something, then
+drops to storage-only cost a few minutes after you stop. (It didn't
+always work this way: `range-04` used to run on OpenSearch Serverless,
+which held a fixed ~2-OCU allocation - roughly $350/month - even fully
+idle, making it the one range in the series you couldn't safely leave
+standing.) Both ranges still want teardown for *hygiene* - IAM credential
+exposure here, a live agent/Lambda surface there - just no longer for two
+different reasons on the *cost* axis.
 
 ## Teardown
 

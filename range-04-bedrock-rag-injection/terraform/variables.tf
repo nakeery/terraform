@@ -17,7 +17,7 @@ variable "allowed_source_cidrs" {
 }
 
 variable "bedrock_model_id" {
-  description = "Bedrock model ID to use for the agent"
+  description = "Bedrock model (cross-region inference profile) ID to use for the agent. Claude Sonnet 4.5 and later don't support on-demand invocation by bare model ID - this must be an inference profile ID (the \"us.\" prefix), which also requires model access enabled in every region the profile can route to, not just var.region."
   type        = string
-  default     = "anthropic.claude-3-sonnet-20240229-v1:0"
+  default     = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 }
