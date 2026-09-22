@@ -188,6 +188,17 @@ a month even left standing. Active compute bills at **$0.12/ACU-hour** for
 however long you're actually walking the chain, and Bedrock's own
 model-invocation charges are unchanged.
 
+The move to **Amazon Bedrock AgentCore** (see the note at the top) doesn't
+change that profile. AgentCore is consumption-billed with no upfront or minimum
+fee, so it adds **nothing at idle**: the harness runs inside AgentCore Runtime
+($0.0895/vCPU-hour + $0.00945/GB-hour, charged only on active CPU/memory per
+session - time spent waiting on the model or a tool isn't billed as CPU), and
+the AgentCore Gateway adds a small per-request fee per tool call. For a lab this
+size that's **pennies per full walk of the chain** and **$0 between sessions** -
+dwarfed by the (unchanged) foundation-model token cost. The retired Bedrock
+Agents orchestration was free, so this is a small net-new active-time meter, not
+a standing one.
+
 That's a real change from this range's original profile: it used to run on
 **OpenSearch Serverless**, which held a fixed multi-OCU allocation even fully
 idle - roughly $350/month at the ~2-OCU floor, the one range in the series you

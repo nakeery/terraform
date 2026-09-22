@@ -18,7 +18,7 @@ blast radius climb with each range, ending on the AI/agentic scenario.
 | 01 | [**EKS Secure Baseline**](range-01-eks-secure-baseline/README.md) | A correctly-hardened EKS cluster: private subnets, IRSA/OIDC, least-privilege IAM, control-plane audit logging. The control everything else is diffed against. | Infrastructure (secure) |
 | 02 | [**EKS Attack Chain**](range-02-eks-attack-chain/README.md) | The same cluster deliberately broken: internet-facing unauthenticated pod, `cluster-admin` binding, over-privileged node role, no audit trail. Chain mirrors the 2018 Tesla and 2019 Capital One breaches. | Infrastructure (offensive) |
 | 03 | [**IAM Privilege Escalation Range**](range-03-iam-privilege-escalation/README.md) | Three distinct AWS IAM privesc paths from a low-privilege foothold to full account access. Documented Rhino Security Labs techniques. IAM + S3 only, near-zero cost. | Identity |
-| 04 | [**Bedrock RAG Injection Range**](range-04-bedrock-rag-injection/README.md) | Indirect prompt injection against a Bedrock RAG assistant: a poisoned knowledge-base document hijacks an over-permissioned agent into exfiltrating data it should never reach. Mapped to MITRE ATLAS. | AI / agentic |
+| 04 | [**Bedrock RAG Injection Range**](range-04-bedrock-rag-injection/README.md) | Indirect prompt injection against a Bedrock AgentCore RAG assistant: a poisoned knowledge-base document hijacks an over-permissioned agent into exfiltrating data it should never reach. Mapped to MITRE ATLAS. | AI / agentic |
 
 ## How the projects connect
 
@@ -61,7 +61,7 @@ before you deploy:
 |-------|--------------|-----|
 | 01 / 02 (EKS) | **Meaningful hourly cost** | EKS control plane, NAT/NLB, worker nodes bill by the hour - tear down after each session. |
 | 03 (IAM) | **Near-zero** | IAM + S3 only; IAM is free, S3 is a few cents of API calls. Safe to leave up cost-wise (its risk is credential exposure). |
-| 04 (Bedrock RAG) | **Near-zero** | Vector store is Aurora PostgreSQL Serverless v2, which scales to 0 ACU after ~5 min idle (storage-only cost) and auto-resumes in ~15s. Tear down is about hygiene, not a standing bill. |
+| 04 (Bedrock RAG) | **Near-zero** | Vector store is Aurora PostgreSQL Serverless v2, which scales to 0 ACU after ~5 min idle (storage-only cost) and auto-resumes in ~15s. The AgentCore harness/gateway are consumption-billed (pennies per walk, nothing at idle). Tear down is about hygiene, not a standing bill. |
 
 ## Layout
 
