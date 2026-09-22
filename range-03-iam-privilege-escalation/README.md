@@ -120,8 +120,10 @@ compute-bearing at all: IAM and S3 don't meter by the hour, so there's
 simply no bill to run up. `range-04` has real standing infrastructure
 (Bedrock, Lambda, an Aurora PostgreSQL Serverless v2 vector store) that
 happens to scale to zero when idle rather than having no meter to begin
-with - it bills for the ACU-minutes it's actually doing something, then
-drops to storage-only cost a few minutes after you stop. (It didn't
+with - it bills **$0.12/ACU-hour** (Aurora Standard, us-east-1, AWS pricing
+at time of writing) for however long it's actually doing something, then
+drops to **$0.10/GB-month** storage-only cost a few minutes after you stop -
+a few cents for a knowledge base this small. (It didn't
 always work this way: `range-04` used to run on OpenSearch Serverless,
 which held a fixed ~2-OCU allocation - roughly $350/month - even fully
 idle, making it the one range in the series you couldn't safely leave

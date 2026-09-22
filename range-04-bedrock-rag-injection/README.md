@@ -153,10 +153,14 @@ trigger ingestion, invoke the agent, and collect both flags.
 **Near-zero when idle - same tier as [range-03](../range-03-iam-privilege-escalation/README.md).**
 This range's vector store runs on **Aurora PostgreSQL Serverless v2**, which
 scales down to **0 ACU after ~5 minutes** without a query or ingestion job and
-auto-resumes in about **15 seconds** on the next one. With nothing running,
-you're paying storage only - a few cents a month for a knowledge base this
-small. Compute only bills for the ACU-minutes you're actively walking the
-chain, and Bedrock's own model-invocation charges are unchanged.
+auto-resumes in about **15 seconds** on the next one. At **0 ACU there is no
+compute charge and no minimum cluster charge** - the only meter still running
+is storage, at **$0.10/GB-month** (Aurora Standard, us-east-1, AWS pricing at
+time of writing), which for a knowledge base this size (a handful of tiny
+documents, mostly Postgres system overhead) is well under 1 GB - a few cents
+a month even left standing. Active compute bills at **$0.12/ACU-hour** for
+however long you're actually walking the chain, and Bedrock's own
+model-invocation charges are unchanged.
 
 That's a real change from this range's original profile: it used to run on
 **OpenSearch Serverless**, which held a fixed multi-OCU allocation even fully

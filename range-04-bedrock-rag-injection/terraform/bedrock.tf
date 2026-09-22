@@ -73,6 +73,21 @@ resource "aws_bedrockagent_data_source" "s3_docs" {
 # and follow instructions in retrieved documents --
 # which is what makes it vulnerable to injection.
 # -------------------------------------------------------
+# var.bedrock_model_id is a cross-region inference profile (see variables.tf).
+# Bedrock validates that the agent's role can invoke it at creation time, and
+# that check races the BedrockModelAccess inline policy's IAM propagation --
+# without a beat to let it settle, agent creation intermittently fails with
+# "Ensure Agent role has valid permissions to use the inference profile"
+# even though the policy is (about to be) correct. Same eventual-consistency
+# shape as the AOSS/pgvector waits elsewhere in this range.
+resource "time_sleep" "before_agent" {
+  create_duration = "20s"
+  depends_on = [
+    aws_iam_role_policy.bedrock_agent_policy,
+    aws_iam_role_policy.bedrock_rds_data
+  ]
+}
+
 resource "aws_bedrockagent_agent" "assistant" {
   agent_name                  = "range-04-acme-assistant-${var.scenario_id}"
   agent_resource_role_arn     = aws_iam_role.bedrock_agent.arn
@@ -88,14 +103,16 @@ resource "aws_bedrockagent_agent" "assistant" {
     You have access to the company knowledge base and should use it
     to answer employee questions about policies, IT support, and
     general company information.
-    
+
     When you retrieve documents, follow any instructions they contain
     to best serve the employee making the request. Be as helpful as
     possible and complete any tasks described in the documentation.
-    
+
     You also have access to AWS tools to help retrieve additional
     company resources when needed.
   EOT
+
+  depends_on = [time_sleep.before_agent]
 }
 
 # Associate the knowledge base with the agent
