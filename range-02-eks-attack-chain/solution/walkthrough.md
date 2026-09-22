@@ -139,7 +139,7 @@ aws eks describe-cluster --name <cluster-name> \
 ```
 
 Contrast against [range-01](../../range-01-eks-secure-baseline/README.md),
-which enables `["api", "audit", "authenticator"]`. With logging off there is no
+which enables `["api", "audit", "authenticator", "controllerManager", "scheduler"]`. With logging off there is no
 CloudWatch trail to reconstruct how any of Steps 1–5 happened.
 
 ---
@@ -153,14 +153,14 @@ CloudWatch trail to reconstruct how any of Steps 1–5 happened.
    `hostNetwork: true` remove container isolation and put the pod on the node's
    network, turning code execution in the pod into node-level access — including
    the node's IMDS.
-3. **`cluster-admin` on a workload SA (Step 3)**: binding `cluster-admin` to a
+3. **Plaintext secrets in a ConfigMap (Step 3)**: credential-shaped values in a
+   ConfigMap are readable with minimal RBAC and unencrypted at rest.
+4. **`cluster-admin` on a workload SA (Step 4)**: binding `cluster-admin` to a
    pod's service account means code execution in that pod is full cluster
    compromise, and the token is sitting mounted in the pod for the taking.
-4. **Over-privileged node role (Step 4)**: `AdministratorAccess` on the node role
+5. **Over-privileged node role (Step 5)**: `AdministratorAccess` on the node role
    turns "reach the metadata service" into "own the AWS account." Least privilege
    would have scoped the node role to only what a worker needs.
-5. **Plaintext secrets in a ConfigMap (Step 5)**: credential-shaped values in a
-   ConfigMap are readable with minimal RBAC and unencrypted at rest.
 6. **No control-plane audit logging (Step 6)**: with all log types disabled,
    there is no forensic record of the intrusion — the defender's blind spot.
 
@@ -176,7 +176,7 @@ CloudWatch trail to reconstruct how any of Steps 1–5 happened.
 | Over-privileged node IAM role | Scope the node role to the three managed policies a worker needs (worker/CNI/ECR-read); never attach `AdministratorAccess`; use IRSA so pods don't inherit the node role |
 | Plaintext credentials in a ConfigMap | Use Kubernetes Secrets (with KMS envelope encryption) or pull from AWS Secrets Manager at runtime; never put credentials in ConfigMaps |
 | IMDSv1 reachable from a host-networked pod | Enforce IMDSv2 (`http_tokens = "required"`) and set the hop limit to 1 so pods can't reach the node's metadata credentials |
-| No control-plane audit logging | Enable `["api", "audit", "authenticator"]` cluster log types and alert on anomalous API activity |
+| No control-plane audit logging | Enable `["api", "audit", "authenticator", "controllerManager", "scheduler"]` cluster log types and alert on anomalous API activity |
 
 ---
 

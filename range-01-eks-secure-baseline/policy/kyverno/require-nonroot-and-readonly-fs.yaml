@@ -6,7 +6,7 @@
 #
 # Should PASS cleanly against range-01-eks-secure-baseline/k8s/nginx-deployment.yaml.
 # Should FAIL against range-02-eks-attack-chain/k8s/vulnerable-dashboard.yaml,
-# which sets no securityContext at all.
+# which sets privileged: true but omits runAsNonRoot/readOnlyRootFilesystem.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:

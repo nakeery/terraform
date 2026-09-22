@@ -15,7 +15,7 @@ resource "aws_eks_cluster" "main" {
   # -------------------------------------------------------
   # ATTACK CHAIN STEP - NO CONTROL PLANE AUDIT LOGGING
   #
-  # range-01-eks-secure-baseline enables ["api", "audit", "authenticator"] specifically
+  # range-01-eks-secure-baseline enables ["api", "audit", "authenticator", "controllerManager", "scheduler"] specifically
   # for forensic visibility. This is the closing beat of the attack
   # chain, deliberately left empty: even if every earlier step here
   # succeeds exactly as designed, there's no CloudWatch trail to

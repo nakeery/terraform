@@ -24,8 +24,8 @@ not an arbitrary "turn the security off" toggle. Walked in order:
    Kubernetes Dashboard).
 
 2. **Privileged, host-networked pod** (`k8s/vulnerable-dashboard.yaml`)
-   The pod runs `privileged: true` with `hostNetwork: true` and no
-   securityContext - container isolation is gone, and the pod shares the node's
+   The pod runs `privileged: true` with `hostNetwork: true` and omits
+   `runAsNonRoot`/`readOnlyRootFilesystem` - container isolation is gone, and the pod shares the node's
    network namespace, so it can reach the node filesystem and the node's IMDS.
 
 3. **Cluster-admin RBAC binding** (`k8s/vulnerable-dashboard.yaml`)
@@ -43,7 +43,7 @@ not an arbitrary "turn the security off" toggle. Walked in order:
 
 6. **No audit trail** (`terraform/eks.tf`)
    `enabled_cluster_log_types = []` - contrast against range-01-eks-secure-baseline's
-   explicit `["api", "audit", "authenticator"]`. None of the steps above leave a
+   explicit `["api", "audit", "authenticator", "controllerManager", "scheduler"]`. None of the steps above leave a
    control-plane audit record.
 
 ## Deploy

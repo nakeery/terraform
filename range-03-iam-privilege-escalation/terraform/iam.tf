@@ -182,6 +182,12 @@ resource "aws_iam_user_policy" "step3_passrole_lambda" {
 # lets the Lambda service assume it, and the AdministratorAccess
 # attachment below makes running code as this role a full account
 # takeover.
+#
+# Unlike the users and bucket in this range, this role deliberately keeps a
+# stable, suffix-free name: the walkthrough's Step 5 commands reference it
+# literally (`aws iam get-role --role-name <project>-privileged-exec-role`).
+# Trade-off: two concurrent stand-ups in one account collide on this name, so
+# stand up only one instance of this range per account at a time.
 resource "aws_iam_role" "privileged_exec" {
   name = "${local.name_prefix}-privileged-exec-role"
 

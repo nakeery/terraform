@@ -63,6 +63,10 @@ resource "aws_opensearchserverless_access_policy" "kb_access" {
           Permission   = ["aoss:*"]
         }
       ]
+      # NOTE: caller_identity.arn is the deployer principal, needed so the
+      # opensearch provider can create the vector index. AOSS data-access
+      # policies reject STS assumed-role session ARNs, so apply this range as
+      # an IAM user (not an assumed role) or index/KB creation will 403.
       Principal = [
         aws_iam_role.bedrock_agent.arn,
         data.aws_caller_identity.current.arn
@@ -75,6 +79,12 @@ resource "aws_opensearchserverless_collection" "kb" {
   name        = "range-04-kb-${random_id.suffix.hex}"
   type        = "VECTORSEARCH"
   description = "Vector store for the AI RAG injection range"
+
+  # Single-AZ: the AWS provider defaults standby_replicas to ENABLED, which
+  # provisions the redundant multi-AZ OCU allocation (~2x cost). Pinned
+  # DISABLED to match the README's ~$350/mo default; set ENABLED (or remove
+  # this line) for the production-shaped ~$700/mo redundant posture.
+  standby_replicas = "DISABLED"
 
   depends_on = [
     aws_opensearchserverless_security_policy.encryption,

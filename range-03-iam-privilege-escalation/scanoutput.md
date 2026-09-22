@@ -14,7 +14,7 @@ only for readability, matching the precedent in the repo-root
 Nothing about the checks, resources or pass/fail verdicts was changed.
 
 Unlike the older EKS scan, this Checkov version's `--compact` mode prints
-only the FAILED blocks plus a summary header (it does not enumerate the 33
+only the FAILED blocks plus a summary header (it does not enumerate the 34
 passing checks individually), so the pass count below comes straight from
 that header line, not a manual `grep`.
 

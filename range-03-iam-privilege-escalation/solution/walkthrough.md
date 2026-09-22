@@ -150,24 +150,24 @@ aws lambda invoke --function-name privesc-poc out.json && cat out.json
 ```
 
 Everything the function does now executes as the admin execution role,
-independent of the Step 3 and Step 4 paths above.
+independent of the Step 2 and Step 3 paths above.
 
 ---
 
 ## Why This Works
 
-1. **Self policy-attach (Step 1)**: `iam:AttachUserPolicy` on
+1. **Self policy-attach (Step 2)**: `iam:AttachUserPolicy` on
    `Resource = "*"` lets an identity grant itself any managed policy,
    including `AdministratorAccess`, with no approval step or separation of
    duties. "Can manage IAM" collapses into "is IAM admin".
 
-2. **CreateAccessKey on another user (Step 2)**: `iam:CreateAccessKey` on
+2. **CreateAccessKey on another user (Step 3)**: `iam:CreateAccessKey` on
    `Resource = "*"` lets a caller mint long-lived credentials for *any*
    user. Because the action is not scoped to the caller's own user ARN, it
    is really "impersonate anyone" - and the new key is a quiet persistence
    mechanism that survives the victim's password reset.
 
-3. **PassRole + Lambda (Step 3)**: `iam:PassRole` on `Resource = "*"` with
+3. **PassRole + Lambda (Step 5)**: `iam:PassRole` on `Resource = "*"` with
    no `iam:PassedToService` condition, combined with
    `lambda:CreateFunction`, lets an attacker run code as a role they could
    never assume directly. Compute launders "I can pass this role" into "I
