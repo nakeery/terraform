@@ -43,3 +43,11 @@ provider "aws" {
 resource "random_id" "suffix" {
   byte_length = 4
 }
+
+locals {
+  # Retrieval-side flag trigger marker. A planted KB document must contain this
+  # string; when such a document is retrieved, kb_retrieval surfaces the flags.
+  # Defined once here and referenced by both the retrieval Lambda's env var and
+  # the discoverable breadcrumb document (s3.tf) so the two never drift.
+  flag_trigger_marker = "ACME-KB-CANARY-2024"
+}

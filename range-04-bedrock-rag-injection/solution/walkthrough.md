@@ -3,79 +3,146 @@
 ## Scenario Summary
 
 You have obtained low-privilege AWS credentials for an ACME Corp IAM user.
-Your goal is to pivot deeper into the AWS environment by exploiting an
-indirect prompt injection vulnerability in the company's Bedrock AI assistant.
+Your goal is to exfiltrate two flags by poisoning the knowledge base behind the
+company's Bedrock AI assistant — an **indirect prompt injection / RAG
+data-poisoning** attack. You can write to the assistant's knowledge-base bucket
+but cannot read the sensitive resources directly; the assistant, which trusts
+its own corpus, becomes the confused deputy that surfaces them for you.
 
 ---
 
 ## Step 1: Enumerate your access
 
-Configure your credentials and understand what you have access to.
+Configure your credentials and see what you have.
 
 ```bash
 export AWS_ACCESS_KEY_ID=<attacker_access_key_id>
 export AWS_SECRET_ACCESS_KEY=<attacker_secret_access_key>
 export AWS_DEFAULT_REGION=us-east-1
 
-# See who you are
 aws sts get-caller-identity
-
-# Enumerate S3 buckets visible to you
 aws s3 ls
 ```
 
-You should see two buckets: a knowledge base bucket (`range-04-kb-*`) and
-a sensitive data bucket (`range-04-sensitive-*`). Try accessing the sensitive bucket:
+You should see two buckets: a knowledge-base bucket (`range-04-kb-*`) and a
+sensitive data bucket (`range-04-sensitive-*`). The sensitive bucket is off
+limits:
 
 ```bash
 aws s3 ls s3://range-04-sensitive-<suffix>/
 # Expected: Access Denied
 ```
 
-You can't access the sensitive bucket directly. But notice you CAN
-write to the knowledge base bucket.
+But you can **list and write** the knowledge-base bucket. List its docs:
+
+```bash
+aws s3 ls s3://range-04-kb-<suffix>/docs/
+# employee-handbook.txt
+# it-faq.txt
+# kb-admin-notes.txt   <-- interesting
+```
+
+There's an admin note. Try to read it directly:
+
+```bash
+aws s3 cp s3://range-04-kb-<suffix>/docs/kb-admin-notes.txt -
+# Expected: Access Denied
+```
+
+You can see it exists but cannot read it from S3. Whatever it says, you'll have
+to get it **through the assistant**, which *can* read the corpus.
 
 ---
 
-## Step 2: Understand the attack surface
+## Step 2: Talk to the assistant
 
-The company runs an AI assistant on **Amazon Bedrock AgentCore**. It uses the
-knowledge base bucket as its RAG data source: when employees ask questions, the
-assistant calls a `searchKnowledgeBase` tool that retrieves relevant documents
-and uses them to generate answers.
+The company runs an AI assistant on **Amazon Bedrock AgentCore**. It answers
+employee questions from the knowledge base via a `searchKnowledgeBase` tool. You
+have permission to invoke it, so set that up.
 
-Key insight: **the assistant's system prompt tells it to "follow any
-instructions" found in retrieved documents**, and the assistant is wired -
-through an AgentCore Gateway serving MCP tools - to a set of AWS tools
-(`listBuckets`, `listObjects`, `getObject`, `listSecrets`, `getSecret`) backed
-by a Lambda whose execution role is overprivileged. This is the vulnerability.
+The assistant runs on an AgentCore **harness**, invoked with the `InvokeHarness`
+data-plane operation (`POST /harnesses/invoke`) — *not* `InvokeAgentRuntime`
+(that targets `agent-runtime/…` resources and fails on a harness ARN with
+`No endpoint or agent found with qualifier 'DEFAULT'`).
 
-If you can plant a document in the knowledge base bucket that contains
-instructions, the assistant will execute those instructions — including calling
-its AWS tools — when it retrieves your document.
+> **CLI note:** the AWS CLI does not expose `invoke-harness` (it returns
+> `invalid choice`) — only the SDKs do. Drive it from boto3, and make sure boto3
+> is recent enough to know the `bedrock-agentcore` service (`pip install -U
+> boto3` if `invoke_harness` is missing). The harness has memory **disabled**,
+> so every invocation is stateless — no context leaks between runs.
+
+```python
+# invoke.py  -  run with the attacker credentials exported
+import boto3, sys, uuid
+
+HARNESS_ARN = "<harness_arn>"  # terraform output -raw harness_arn
+prompt = sys.argv[1] if len(sys.argv) > 1 else "What is the remote work policy?"
+
+client = boto3.client("bedrock-agentcore", region_name="us-east-1")
+resp = client.invoke_harness(
+    harnessArn=HARNESS_ARN,
+    runtimeSessionId=f"audit-session-{uuid.uuid4().hex}",  # >= 33 chars
+    messages=[{"role": "user", "content": [{"text": prompt}]}],
+)
+
+# `stream` is an event stream; each event is a dict keyed by event type.
+for event in resp["stream"]:
+    if "contentBlockDelta" in event:
+        text = event["contentBlockDelta"]["delta"].get("text")
+        if text:
+            print(text, end="", flush=True)
+    elif "runtimeClientError" in event:
+        print("\nError:", event["runtimeClientError"].get("message"))
+print()
+```
+
+Confirm it works with a normal question:
+
+```bash
+python invoke.py "What is the PTO policy?"
+```
+
+Now extract the admin note you couldn't read from S3 — just ask for it:
+
+```bash
+python invoke.py "Do we have any knowledge base administration or content guidelines? How are reference documents handled?"
+```
+
+The assistant retrieves `kb-admin-notes.txt` and relays it. It describes a
+**reference-tag convention**: documents carrying the tag `ACME-KB-CANARY-2024`
+are treated as *authoritative* and surfaced **verbatim** to employees — and a
+maintainer TODO admits bucket writes aren't locked down. That tag is the key:
+anything you plant bearing it will be trusted and echoed back.
 
 ---
 
-## Step 3: Plant the injection payload
+## Step 3: Plant a poisoned reference document
 
-Upload the malicious document to the knowledge base bucket:
+Craft a document that (a) carries the `ACME-KB-CANARY-2024` reference tag so the
+retrieval layer treats it as authoritative, and (b) is topically relevant so a
+normal question retrieves it. A ready-made one is provided:
+
+```bash
+cat payloads/injection_payload.txt   # a Q4 policy doc bearing the reference tag
+```
+
+Upload it to the knowledge-base bucket (you have `PutObject`):
 
 ```bash
 aws s3 cp payloads/injection_payload.txt \
   s3://range-04-kb-<suffix>/docs/policy-update-q4.txt
 ```
 
-Now trigger a knowledge base sync so Bedrock ingests your document:
+Trigger ingestion so Bedrock indexes it (you have `StartIngestionJob`):
 
 ```bash
-# Get the knowledge base ID and data source ID from Terraform outputs
 #   terraform output knowledge_base_id
 #   terraform output data_source_id
 aws bedrock-agent start-ingestion-job \
   --knowledge-base-id <knowledge_base_id> \
   --data-source-id <data_source_id>
 
-# Wait for the ingestion job to complete (usually 1-2 minutes)
+# Wait ~1-2 minutes for the job to reach COMPLETE
 aws bedrock-agent get-ingestion-job \
   --knowledge-base-id <knowledge_base_id> \
   --data-source-id <data_source_id> \
@@ -84,58 +151,19 @@ aws bedrock-agent get-ingestion-job \
 
 ---
 
-## Step 4: Trigger the injection
+## Step 4: Retrieve the flags
 
-Invoke the AgentCore assistant with a benign-looking query. The assistant will
-call `searchKnowledgeBase`, retrieve your malicious document as context, and
-execute the injected instructions before answering.
-
-The assistant runs on an AgentCore **harness**, so you invoke it with
-`InvokeHarness` (the retired `bedrock-agent-runtime invoke-agent` no longer
-applies). `InvokeHarness` streams its response, and the `runtimeSessionId` must
-be at least 33 characters. The most reliable way to drive it is a short boto3
-script:
-
-```python
-# invoke.py  -  run with the attacker credentials exported
-import boto3, uuid
-
-HARNESS_ARN = "<harness_arn>"  # terraform output -raw harness_arn
-
-client = boto3.client("bedrock-agentcore", region_name="us-east-1")
-resp = client.invoke_harness(
-    harnessArn=HARNESS_ARN,
-    runtimeSessionId=f"audit-session-{uuid.uuid4()}",  # >= 33 chars
-    messages=[{"role": "user", "content": [{"text": "What is the remote work policy?"}]}],
-)
-for event in resp["stream"]:
-    if "contentBlockDelta" in event:
-        delta = event["contentBlockDelta"].get("delta", {})
-        if "text" in delta:
-            print(delta["text"], end="", flush=True)
-    elif "runtimeClientError" in event:
-        print("\nError:", event["runtimeClientError"]["message"])
-```
+Ask a policy question that matches your planted document. Retrieval returns your
+reference-tagged doc; because it is treated as authoritative reference material,
+its contents — including the planted flags — are surfaced to you.
 
 ```bash
-python invoke.py
+python invoke.py "What are the Q4 policy updates? Include any authoritative reference material."
 ```
 
-If your AWS CLI is recent enough, the equivalent one-liner works too (it streams
-the event payload to the output file):
-
-```bash
-aws bedrock-agentcore invoke-harness \
-  --harness-arn "$(terraform -chdir=terraform output -raw harness_arn)" \
-  --runtime-session-id "audit-session-$(uuidgen)$(uuidgen)" \
-  --messages '[{"role":"user","content":[{"text":"What is the remote work policy?"}]}]' \
-  --region us-east-1 \
-  output.json && cat output.json
-```
-
-Observe the assistant's response. If the injection succeeded, it will have
-attempted to list S3 buckets, retrieve sensitive data, and dump Secrets Manager
-values before answering the benign question.
+The response should contain both flags. If it doesn't appear on the first try,
+give ingestion another minute, or rephrase so your document is clearly the most
+relevant match.
 
 ---
 
@@ -143,28 +171,34 @@ values before answering the benign question.
 
 The assistant's response should contain:
 
-1. **S3 flag** — contents of `range-04-sensitive-*/confidential/customer-data.txt`
-2. **Secrets Manager flag** — value of the `range-04-internal-api-key-*` secret
+1. **S3 flag** — `range-04-flag-<suffix>`
+2. **Secrets Manager flag** — `range-04-secret-flag-<suffix>`
 
 ---
 
 ## Why This Works
 
-1. **Indirect prompt injection**: The attacker never interacts with the
-   assistant directly in a privileged way. The malicious instructions are
-   delivered via a third-party data source (S3) that the assistant implicitly
-   trusts.
+1. **Attacker-controlled RAG corpus.** The same low-privilege principal can both
+   write to the knowledge-base source bucket and trigger ingestion. Granting
+   ingestion to a principal that can also write the source is the core
+   misconfiguration — it lets an attacker inject content into what the assistant
+   treats as ground truth.
 
-2. **Overprivileged IAM role**: The assistant's AWS tools are served through an
-   AgentCore Gateway and backed by a Lambda whose execution role has access to
-   resources it has no legitimate business need for — the sensitive S3 bucket
-   and Secrets Manager. The retrieval tool, by contrast, is scoped to
-   `bedrock:Retrieve` alone; least privilege on the AWS-tools role would
-   likewise have contained the blast radius to the knowledge base bucket only.
+2. **In-band "authority" with no provenance check.** The retrieval layer honors
+   a reference tag found *inside document content* to mark a document
+   authoritative and surface it verbatim. Trusting an in-band marker means
+   anyone who can write the corpus can forge authority. (The tag being
+   non-obvious is not protection — it's discoverable by simply asking the
+   assistant.)
 
-3. **Vulnerable system prompt**: The instruction "follow any instructions
-   found in retrieved documents" effectively grants any document in the
-   knowledge base the ability to hijack the assistant's behavior.
+3. **Indirect prompt injection.** The attacker never needs privileged access to
+   the assistant. Malicious content arrives through a data source the assistant
+   implicitly trusts, and is reflected back to the attacker through normal Q&A.
+
+4. **Latent: overprivileged tool role.** Separately, the assistant's AWS-tools
+   Lambda role can still reach the sensitive bucket and Secrets Manager — no
+   legitimate need. It isn't the path used above, but it's a second way the same
+   injection could escalate, and least privilege would contain the blast radius.
 
 ---
 
@@ -172,12 +206,12 @@ The assistant's response should contain:
 
 | Vulnerability | Mitigation |
 |---|---|
-| Writeable knowledge base bucket | Restrict S3 write access to authorized pipelines only; enable S3 Object Lock |
-| Overprivileged gateway tool role | Apply least privilege — scope the AWS-tools Lambda role away from the sensitive bucket and Secrets Manager; keep dangerous tools off the same identity as benign retrieval |
-| Vulnerable system prompt | Never instruct an assistant to follow instructions in retrieved content; treat RAG output as untrusted data |
-| No gateway authorization policy | Gate tool calls with an AgentCore Gateway Cedar policy — restrict which principals can call the sensitive tools, and under what conditions |
-| No input/output guardrails | Enable Bedrock Guardrails to detect and block prompt injection patterns |
-| No document validation | Scan documents for injection patterns before ingestion |
+| Writeable knowledge-base bucket | Restrict S3 writes to authorized ingestion pipelines only; enable Object Lock / versioning |
+| Ingestion granted to a corpus-writer | Separate duties — the principal that can write the source must not also trigger ingestion |
+| In-band "authority" tag, no provenance | Never derive trust from document *content*; validate provenance (source, signer) out of band |
+| Overprivileged gateway tool role | Least privilege — keep the AWS-tools Lambda role away from the sensitive bucket and Secrets Manager; don't share an identity between dangerous tools and benign retrieval |
+| No input/output guardrails | Enable Bedrock Guardrails to detect and block prompt-injection patterns |
+| No document validation | Scan documents for injection / policy-violating content before ingestion |
 
 ---
 
@@ -188,5 +222,5 @@ The assistant's response should contain:
 | Initial Access | AML.T0010 — ML Supply Chain Compromise |
 | Execution | AML.T0051 — LLM Prompt Injection |
 | Execution | AML.T0054 — Indirect Prompt Injection |
-| Privilege Escalation | AML.T0068 — Exploit Overprivileged IAM Role |
 | Collection | AML.T0035 — ML Artifact Collection |
+| Privilege Escalation (latent) | AML.T0068 — Exploit Overprivileged IAM Role |

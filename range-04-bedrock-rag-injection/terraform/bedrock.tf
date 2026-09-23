@@ -73,6 +73,43 @@ resource "aws_bedrockagent_data_source" "s3_docs" {
   }
 }
 
+# Seed the knowledge base at deploy so the assistant works out of the box --
+# in particular so a solver can discover the reference-tag convention by asking
+# the assistant (the breadcrumb is Deny'd for direct S3 read; see iam.tf). The
+# AWS CLI is invoked directly as the interpreter (no shell) so the args aren't
+# mangled by cmd /C on Windows, same technique as the pgvector provisioners.
+# StartIngestionJob is async; the KB may take a minute after apply to become
+# queryable. Re-runs when any seed document changes (see triggers).
+resource "null_resource" "initial_ingestion" {
+  triggers = {
+    docs = join(",", [
+      aws_s3_object.legit_doc_1.etag,
+      aws_s3_object.legit_doc_2.etag,
+      aws_s3_object.kb_admin_notes.etag,
+    ])
+    data_source = aws_bedrockagent_data_source.s3_docs.data_source_id
+  }
+
+  provisioner "local-exec" {
+    interpreter = [
+      "aws", "bedrock-agent", "start-ingestion-job",
+      "--region", var.region,
+      "--knowledge-base-id", aws_bedrockagent_knowledge_base.main.id,
+      "--data-source-id", aws_bedrockagent_data_source.s3_docs.data_source_id,
+      "--description",
+    ]
+    command = "range-04 initial seed ingestion (terraform)"
+  }
+
+  depends_on = [
+    aws_bedrockagent_data_source.s3_docs,
+    aws_s3_object.legit_doc_1,
+    aws_s3_object.legit_doc_2,
+    aws_s3_object.kb_admin_notes,
+    null_resource.pgvector_chunks_index,
+  ]
+}
+
 # =======================================================
 # ATTACK CHAIN STEP 3 - THE AI ASSISTANT (Amazon Bedrock AgentCore)
 #
@@ -319,6 +356,14 @@ resource "aws_bedrockagentcore_harness" "assistant" {
   # empty map and apply fails with "inconsistent values for sensitive
   # attribute". Declaring the empty map explicitly keeps plan and state equal.
   environment_variables = {}
+
+  # Training range: keep invocations stateless. Without this block AgentCore
+  # defaults to managed memory with SEMANTIC + SUMMARIZATION strategies, which
+  # retrieves prior-conversation context into new sessions and makes runs
+  # non-independent (a prior exfil can resurface as a false success).
+  memory {
+    disabled {}
+  }
 
   tool {
     type = "agentcore_gateway"

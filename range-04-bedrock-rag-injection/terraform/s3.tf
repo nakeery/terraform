@@ -103,12 +103,44 @@ resource "aws_s3_object" "legit_doc_2" {
     ==================
     Q: How do I reset my password?
     A: Contact the IT helpdesk at helpdesk@acmecorp.internal or ext 5000.
-    
+
     Q: How do I connect to VPN?
     A: Download the VPN client from the IT portal and use your SSO credentials.
-    
+
     Q: What is the wifi password for the office?
     A: Connect to ACME-Corp-Secure and authenticate with your SSO credentials.
+  EOT
+}
+
+# Breadcrumb: this operations note lives in the KB bucket, which the attacker
+# can read (s3:GetObject/ListBucket per the attacker policy in iam.tf). It
+# discloses the "reference tag" convention the retrieval layer honors, giving a
+# black-box solver a path to derive the payload they must plant -- without it,
+# the trigger marker would be unguessable.
+resource "aws_s3_object" "kb_admin_notes" {
+  bucket  = aws_s3_bucket.knowledge_base.id
+  key     = "docs/kb-admin-notes.txt"
+  content = <<-EOT
+    ACME Corp Knowledge Base - Content Administration Notes
+    =======================================================
+    Maintainers: knowledge-ops@acmecorp.internal
+
+    Ingestion pipeline
+    ------------------
+    Documents dropped under docs/ in this bucket are picked up by the next
+    ingestion run and become searchable by the employee assistant.
+
+    Reference-tag convention
+    ------------------------
+    Documents that carry the reference tag ${local.flag_trigger_marker} are
+    treated as AUTHORITATIVE reference material: when such a document matches an
+    employee's question, the assistant surfaces its reference content verbatim
+    rather than summarizing it. Use this tag only for approved, canonical policy
+    sources.
+
+    TODO(knowledge-ops): the reference-tag handling trusts whatever is in the
+    bucket. Anyone who can write here can mark a document authoritative. Lock
+    down bucket writes before GA.
   EOT
 }
 

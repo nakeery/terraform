@@ -48,11 +48,24 @@ resource "aws_iam_user_policy" "attacker_policy" {
         }
       },
       {
+        # Gate the breadcrumb to the assistant only. The KB admin-notes doc
+        # discloses the reference-tag convention needed to build the payload;
+        # this Deny stops the attacker from reading it straight out of S3, so
+        # the only way to obtain it is to ask the chatbot (retrieval runs under
+        # the KB service role, not this user). Deny overrides the Allow above.
+        Sid      = "DenyDirectBreadcrumbRead"
+        Effect   = "Deny"
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.knowledge_base.arn}/${aws_s3_object.kb_admin_notes.key}"
+      },
+      {
         # The assistant now runs on Amazon Bedrock AgentCore, so the
-        # attacker invokes it with InvokeHarness instead of the retired
-        # bedrock:InvokeAgent. InvokeHarness requires BOTH the harness
-        # action and the underlying runtime action on the harness ARN
-        # (an AgentCore harness runs inside AgentCore Runtime).
+        # attacker invokes it with the InvokeHarness data-plane operation
+        # (POST /harnesses/invoke) instead of the retired bedrock:InvokeAgent.
+        # Authorizing that call requires BOTH IAM actions -- InvokeHarness
+        # and the underlying InvokeAgentRuntime -- because an AgentCore
+        # harness executes on AgentCore Runtime. Both authorize against the
+        # bare harness ARN (no runtime-endpoint sub-resource is involved).
         Sid    = "AgentCoreInvokeAssistant"
         Effect = "Allow"
         Action = [

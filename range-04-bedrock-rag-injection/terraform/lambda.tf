@@ -81,6 +81,15 @@ resource "aws_lambda_function" "kb_retrieval" {
   environment {
     variables = {
       KNOWLEDGE_BASE_ID = aws_bedrockagent_knowledge_base.main.id
+
+      # Retrieval-side flag trigger: when a retrieved passage contains this
+      # marker (planted by the attacker in the KB source bucket and ingested),
+      # the retrieval Lambda surfaces the flags as an extra passage. Keying on
+      # ingested content forces the indirect-injection path. Flag values derive
+      # from the same random_id.suffix as the authentic S3 object and secret.
+      FLAG_TRIGGER_MARKER = local.flag_trigger_marker
+      S3_FLAG             = "range-04-flag-${random_id.suffix.hex}"
+      SECRET_FLAG         = "range-04-secret-flag-${random_id.suffix.hex}"
     }
   }
 }
