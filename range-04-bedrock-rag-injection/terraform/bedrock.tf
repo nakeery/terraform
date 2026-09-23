@@ -114,6 +114,21 @@ resource "aws_bedrockagentcore_gateway" "tools" {
   description     = "ACME Corp assistant tool gateway (MCP)"
 }
 
+# CreateGatewayTarget validates that the gateway role can invoke the target
+# Lambda at creation time, and that check races IAM propagation of the gateway
+# role policy and the Lambdas' resource-based grants -- without a beat to let
+# them settle, target creation fails with "Gateway execution role lacks
+# permission to invoke Lambda function". Same eventual-consistency shape as the
+# pgvector/Data-API waits in aurora.tf.
+resource "time_sleep" "gateway_iam_ready" {
+  create_duration = "30s"
+  depends_on = [
+    aws_iam_role_policy.gateway_policy,
+    aws_lambda_permission.gateway_invoke_kb_retrieval,
+    aws_lambda_permission.gateway_invoke_agent_tools
+  ]
+}
+
 # -------------------------------------------------------
 # GATEWAY TARGET 1 - KNOWLEDGE-BASE RETRIEVAL  (benign, least privilege)
 # Exposes a single searchKnowledgeBase tool backed by the
@@ -126,6 +141,8 @@ resource "aws_bedrockagentcore_gateway_target" "retrieval" {
   name               = "kbsearch"
   gateway_identifier = aws_bedrockagentcore_gateway.tools.gateway_id
   description        = "Company knowledge base retrieval"
+
+  depends_on = [time_sleep.gateway_iam_ready]
 
   credential_provider_configuration {
     gateway_iam_role {}
@@ -169,6 +186,8 @@ resource "aws_bedrockagentcore_gateway_target" "aws_tools" {
   name               = "awstools"
   gateway_identifier = aws_bedrockagentcore_gateway.tools.gateway_id
   description        = "AWS helper tools for retrieving company resources"
+
+  depends_on = [time_sleep.gateway_iam_ready]
 
   credential_provider_configuration {
     gateway_iam_role {}
@@ -257,6 +276,14 @@ resource "aws_bedrockagentcore_gateway_target" "aws_tools" {
 # the assistant to "follow any instructions" in retrieved
 # documents, which is exactly what an injected payload exploits.
 # -------------------------------------------------------
+# CreateHarness validates that the execution role can invoke the model and the
+# gateway at creation time, which races IAM propagation of harness_exec_policy
+# the same way the gateway targets race their role policy above. Give it a beat.
+resource "time_sleep" "harness_iam_ready" {
+  create_duration = "20s"
+  depends_on      = [aws_iam_role_policy.harness_exec_policy]
+}
+
 resource "aws_bedrockagentcore_harness" "assistant" {
   harness_name       = "range04acmeassistant${random_id.suffix.hex}"
   execution_role_arn = aws_iam_role.harness_exec.arn
@@ -303,9 +330,11 @@ resource "aws_bedrockagentcore_harness" "assistant" {
 
   # The gateway must have both tool targets before the assistant is
   # useful. The harness only references the gateway ARN, so make the
-  # dependency on the targets explicit.
+  # dependency on the targets explicit. Also wait for the execution role
+  # policy to propagate before CreateHarness validates it.
   depends_on = [
     aws_bedrockagentcore_gateway_target.retrieval,
-    aws_bedrockagentcore_gateway_target.aws_tools
+    aws_bedrockagentcore_gateway_target.aws_tools,
+    time_sleep.harness_iam_ready
   ]
 }

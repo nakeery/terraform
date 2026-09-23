@@ -47,7 +47,7 @@ resource "aws_rds_cluster" "kb" {
   # scale-to-zero ACUs. If this exact patch isn't offered in your region,
   # check `aws rds describe-db-engine-versions --engine aurora-postgresql`
   # and bump it.
-  engine_version = "16.4"
+  engine_version = "16.14"
   database_name  = "bedrockkb"
 
   master_username             = "bedrockadmin"
