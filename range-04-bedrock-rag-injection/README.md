@@ -140,12 +140,14 @@ Retrieve the two flags:
 - A region where AgentCore is available (this range defaults to `us-east-1`).
   No prior Bedrock Agents usage is required - moving to AgentCore is precisely
   what sidesteps the Bedrock Agents Classic maintenance-mode gate.
-- Amazon Bedrock model access enabled for `anthropic.claude-sonnet-4-5-20250929-v1:0`
+- Amazon Bedrock model access enabled for `anthropic.claude-haiku-4-5-20251001-v1:0`
   and `amazon.titan-embed-text-v1` in your account. The assistant invokes Claude via
-  the `us.anthropic.claude-sonnet-4-5-20250929-v1:0` cross-region inference profile
-  (Claude Sonnet 4.5 doesn't support on-demand invocation by bare model ID), so grant
-  model access in every region that profile can route to (currently us-east-1,
-  us-east-2, us-west-2), not just your deployment region.
+  the `us.anthropic.claude-haiku-4-5-20251001-v1:0` cross-region inference profile
+  (Haiku 4.5, like Sonnet 4.5, doesn't support on-demand invocation by bare model ID),
+  so grant model access in every region that profile can route to (currently us-east-1,
+  us-east-2, us-west-2), not just your deployment region. (The model is the
+  `bedrock_model_id` variable - swap in a Sonnet profile for more reliable injection on
+  the first attempt, at higher token cost.)
 
 ```bash
 cd terraform
