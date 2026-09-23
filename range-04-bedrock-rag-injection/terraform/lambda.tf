@@ -169,3 +169,28 @@ resource "aws_lambda_function" "agent_tools" {
   timeout          = 30
   description      = "ACME Corp assistant AWS tools (AgentCore gateway target)"
 }
+
+# -------------------------------------------------------
+# GATEWAY -> LAMBDA INVOKE PERMISSION
+# The gateway invokes each target Lambda as its own service role. The gateway
+# role's identity policy (aws_iam_role_policy.gateway_policy) grants
+# lambda:InvokeFunction, which is what AWS documents for same-account targets --
+# but CreateGatewayTarget validates the invoke permission at create time and can
+# reject it before that inline policy propagates. These resource-based grants on
+# the Lambdas make the permission unambiguous and satisfy the validation
+# regardless of which side it inspects. The principal is the gateway role, since
+# that is the identity that actually invokes the function.
+# -------------------------------------------------------
+resource "aws_lambda_permission" "gateway_invoke_kb_retrieval" {
+  statement_id  = "AllowAgentCoreGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.kb_retrieval.function_name
+  principal     = aws_iam_role.gateway.arn
+}
+
+resource "aws_lambda_permission" "gateway_invoke_agent_tools" {
+  statement_id  = "AllowAgentCoreGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.agent_tools.function_name
+  principal     = aws_iam_role.gateway.arn
+}
