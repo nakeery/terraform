@@ -42,10 +42,10 @@ resource "aws_bedrockagent_knowledge_base" "main" {
     }
   }
 
-  # The pgvector extension, schema, table, and index must exist before the
+  # The pgvector extension, schema, table, and indexes must exist before the
   # knowledge base can be created.
   depends_on = [
-    null_resource.pgvector_index
+    null_resource.pgvector_chunks_index
   ]
 }
 
@@ -314,6 +314,11 @@ resource "aws_bedrockagentcore_harness" "assistant" {
   allowed_tools   = ["*"]
   max_iterations  = 10
   timeout_seconds = 300
+
+  # Provider bug workaround (aws 6.66.0): left unset, the API reads back an
+  # empty map and apply fails with "inconsistent values for sensitive
+  # attribute". Declaring the empty map explicitly keeps plan and state equal.
+  environment_variables = {}
 
   tool {
     type = "agentcore_gateway"

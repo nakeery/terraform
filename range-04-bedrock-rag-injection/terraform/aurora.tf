@@ -85,36 +85,60 @@ resource "time_sleep" "before_pgvector_setup" {
   ]
 }
 
+# The aws CLI is invoked directly as the interpreter (no shell), with the SQL
+# passed as the final argument via `command`. Going through the default
+# shell breaks on Windows: Terraform wraps the command for `cmd /C`, which
+# mangles the embedded quotes and splits the SQL into separate CLI args.
 locals {
-  rds_data_common_args = "--resource-arn ${aws_rds_cluster.kb.arn} --secret-arn ${aws_rds_cluster.kb.master_user_secret[0].secret_arn} --database ${aws_rds_cluster.kb.database_name}"
+  rds_data_execute = [
+    "aws", "rds-data", "execute-statement",
+    "--resource-arn", aws_rds_cluster.kb.arn,
+    "--secret-arn", aws_rds_cluster.kb.master_user_secret[0].secret_arn,
+    "--database", aws_rds_cluster.kb.database_name,
+    "--sql",
+  ]
 }
 
 resource "null_resource" "pgvector_extension" {
   provisioner "local-exec" {
-    command = "aws rds-data execute-statement ${local.rds_data_common_args} --sql \"CREATE EXTENSION IF NOT EXISTS vector;\""
+    interpreter = local.rds_data_execute
+    command     = "CREATE EXTENSION IF NOT EXISTS vector;"
   }
   depends_on = [time_sleep.before_pgvector_setup]
 }
 
 resource "null_resource" "pgvector_schema" {
   provisioner "local-exec" {
-    command = "aws rds-data execute-statement ${local.rds_data_common_args} --sql \"CREATE SCHEMA IF NOT EXISTS bedrock_integration;\""
+    interpreter = local.rds_data_execute
+    command     = "CREATE SCHEMA IF NOT EXISTS bedrock_integration;"
   }
   depends_on = [null_resource.pgvector_extension]
 }
 
 resource "null_resource" "pgvector_table" {
   provisioner "local-exec" {
-    command = "aws rds-data execute-statement ${local.rds_data_common_args} --sql \"CREATE TABLE IF NOT EXISTS bedrock_integration.bedrock_kb (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), embedding vector(1536), chunks text, metadata json);\""
+    interpreter = local.rds_data_execute
+    command     = "CREATE TABLE IF NOT EXISTS bedrock_integration.bedrock_kb (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), embedding vector(1536), chunks text, metadata json);"
   }
   depends_on = [null_resource.pgvector_schema]
 }
 
 resource "null_resource" "pgvector_index" {
   provisioner "local-exec" {
-    command = "aws rds-data execute-statement ${local.rds_data_common_args} --sql \"CREATE INDEX IF NOT EXISTS bedrock_kb_embedding_idx ON bedrock_integration.bedrock_kb USING hnsw (embedding vector_cosine_ops);\""
+    interpreter = local.rds_data_execute
+    command     = "CREATE INDEX IF NOT EXISTS bedrock_kb_embedding_idx ON bedrock_integration.bedrock_kb USING hnsw (embedding vector_cosine_ops);"
   }
   depends_on = [null_resource.pgvector_table]
+}
+
+# Bedrock requires a full-text index on the text column (used for hybrid
+# search) and rejects CreateKnowledgeBase without it.
+resource "null_resource" "pgvector_chunks_index" {
+  provisioner "local-exec" {
+    interpreter = local.rds_data_execute
+    command     = "CREATE INDEX IF NOT EXISTS bedrock_kb_chunks_idx ON bedrock_integration.bedrock_kb USING gin (to_tsvector('simple', chunks));"
+  }
+  depends_on = [null_resource.pgvector_index]
 }
 
 # IAM addition for the knowledge base service role to reach the Aurora vector
