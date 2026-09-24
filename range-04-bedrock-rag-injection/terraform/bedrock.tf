@@ -55,6 +55,13 @@ resource "aws_bedrockagent_data_source" "s3_docs" {
   name              = "range-04-s3-docs-${var.scenario_id}"
   description       = "S3 bucket containing ACME Corp internal documentation"
 
+  # On destroy, Bedrock otherwise tries to purge this source's vectors from the
+  # Aurora store first; if the cluster or the KB service role's access is already
+  # gone, that purge fails and the data source sticks in DELETE_UNSUCCESSFUL.
+  # RETAIN skips the purge -- the Aurora cluster is destroyed wholesale anyway,
+  # so the vectors go with it. Makes teardown of this range reliable.
+  data_deletion_policy = "RETAIN"
+
   data_source_configuration {
     type = "S3"
     s3_configuration {
