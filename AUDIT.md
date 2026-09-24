@@ -167,8 +167,8 @@ finding text is preserved in every case as the record of what was found.
 ## range-04-bedrock-rag-injection
 
 > **Superseded (2026-09-22).** Since this audit, range-04 was re-architected
-> twice: off **OpenSearch Serverless → Aurora PostgreSQL Serverless v2** (vector
-> store), and off **Bedrock Agents "Classic" → Amazon Bedrock AgentCore** (the
+> off **OpenSearch Serverless → Aurora PostgreSQL Serverless v2 → Amazon S3
+> Vectors** (vector store), and off **Bedrock Agents "Classic" → Amazon Bedrock AgentCore** (the
 > assistant, after Classic entered maintenance mode and blocked `CreateAgent` on
 > fresh accounts). The OpenSearch cost finding and the `opensearch_index.tf` nit
 > below no longer apply (those resources are gone), and any `bedrock:InvokeAgent`

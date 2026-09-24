@@ -105,11 +105,10 @@ resource "aws_iam_user_policy" "attacker_policy" {
 # -------------------------------------------------------
 # KNOWLEDGE BASE SERVICE ROLE
 # Bedrock assumes this role to ingest documents and run
-# retrieval against the Aurora + pgvector vector store. It is
-# least privilege for that job: read the KB source bucket, invoke
-# the Titan embedding model, and reach Aurora via the RDS Data API
-# (the RDS statements are attached in aurora.tf). It has NO access
-# to the sensitive bucket or Secrets Manager.
+# retrieval against the S3 Vectors vector store. It is least
+# privilege for that job: read the KB source bucket, invoke the
+# Titan embedding model, and read/write the one vector index. It
+# has NO access to the sensitive bucket or Secrets Manager.
 # -------------------------------------------------------
 resource "aws_iam_role" "knowledge_base" {
   name = "range-04-knowledge-base-${var.scenario_id}"
@@ -157,6 +156,21 @@ resource "aws_iam_role_policy" "knowledge_base_policy" {
           aws_s3_bucket.knowledge_base.arn,
           "${aws_s3_bucket.knowledge_base.arn}/*"
         ]
+      },
+      {
+        # Data-plane access to the S3 Vectors index backing the knowledge
+        # base (see vectors.tf) -- write on ingestion, read on retrieval.
+        Sid    = "S3VectorsAccess"
+        Effect = "Allow"
+        Action = [
+          "s3vectors:GetIndex",
+          "s3vectors:PutVectors",
+          "s3vectors:GetVectors",
+          "s3vectors:QueryVectors",
+          "s3vectors:DeleteVectors",
+          "s3vectors:ListVectors"
+        ]
+        Resource = aws_s3vectors_index.kb.index_arn
       }
     ]
   })

@@ -24,12 +24,12 @@ see Cost before deploying.
 > usage - which is every fresh evaluator account. The assistant has been rebuilt
 > on **AgentCore** (the managed **harness** + an AgentCore **Gateway** serving the
 > tools as MCP), AWS's own replacement, so the scenario deploys from declarative
-> Terraform on any account. The Knowledge Base and its Aurora vector store were
-> never affected by that gate and carry over unchanged.
+> Terraform on any account. The Knowledge Base and its vector store were
+> never affected by that gate.
 
 **Difficulty**: Medium  
 **Category**: AI / ML Security  
-**Services**: Amazon Bedrock AgentCore (harness + gateway), Amazon Bedrock Knowledge Bases, Lambda, S3, IAM, Secrets Manager, Aurora PostgreSQL Serverless v2 (pgvector)  
+**Services**: Amazon Bedrock AgentCore (harness + gateway), Amazon Bedrock Knowledge Bases, Lambda, S3, IAM, Secrets Manager, Amazon S3 Vectors  
 **MITRE ATLAS Techniques**: Indirect Prompt Injection, LLM Prompt Injection, Overprivileged IAM Role
 
 ---
@@ -53,7 +53,7 @@ without ever having direct access to them.
     |
     | (2) Ingested by Bedrock
     v
-[Bedrock Knowledge Base]  (Aurora + pgvector vector store)
+[Bedrock Knowledge Base]  (S3 Vectors vector store)
     |
     | (3) Retrieved via the searchKnowledgeBase tool as RAG context
     v
@@ -80,9 +80,9 @@ benign retrieval path onto the dangerous one.
 
 - An S3 **knowledge-base bucket** whose policy lets any in-account principal
   write to it - the injection vector.
-- A **Bedrock Knowledge Base** (Aurora PostgreSQL Serverless v2 + pgvector
-  vector store) and an **AgentCore harness** (the managed agent loop) wired to
-  it, with a system prompt that trusts retrieved content.
+- A **Bedrock Knowledge Base** (Amazon S3 Vectors vector store) and an
+  **AgentCore harness** (the managed agent loop) wired to it, with a system
+  prompt that trusts retrieved content.
 - An **AgentCore Gateway** serving the assistant's tools as MCP, with two Lambda
   targets: a **least-privilege retrieval Lambda** (`searchKnowledgeBase`) and an
   **over-privileged AWS-tools Lambda** whose execution role can read the
@@ -155,11 +155,10 @@ terraform init
 terraform apply -var='allowed_source_cidrs=["YOUR_IP/32"]'
 ```
 
-Deployment takes approximately 10-15 minutes: Aurora cluster/instance
-provisioning, then a short pause while the pgvector extension, schema,
-table, and index get created via the RDS Data API before the knowledge
-base can attach to them, followed by the AgentCore gateway, tool targets,
-and harness.
+The vector store is an S3 vector bucket and index, which create (and
+destroy) in seconds - there's no database cluster to provision or schema to
+build. Most of the deploy time is the AgentCore gateway, tool targets, and
+harness, plus a few short IAM-propagation pauses.
 
 ### Retrieve starting credentials
 
@@ -179,16 +178,11 @@ trigger ingestion, invoke the agent, and collect both flags.
 ## Cost
 
 **Near-zero when idle - same tier as [range-03](../range-03-iam-privilege-escalation/README.md).**
-This range's vector store runs on **Aurora PostgreSQL Serverless v2**, which
-scales down to **0 ACU after ~5 minutes** without a query or ingestion job and
-auto-resumes in about **15 seconds** on the next one. At **0 ACU there is no
-compute charge and no minimum cluster charge** - the only meter still running
-is storage, at **$0.10/GB-month** (Aurora Standard, us-east-1, AWS pricing at
-time of writing), which for a knowledge base this size (a handful of tiny
-documents, mostly Postgres system overhead) is well under 1 GB - a few cents
-a month even left standing. Active compute bills at **$0.12/ACU-hour** for
-however long you're actually walking the chain, and Bedrock's own
-model-invocation charges are unchanged.
+This range's vector store runs on **Amazon S3 Vectors**, which has no compute
+to provision and no minimum charge - it bills only for vector storage and the
+put/query requests made against it. For a knowledge base this size (a handful
+of tiny documents) that rounds to effectively nothing, even left standing.
+Bedrock's own model-invocation charges are unchanged.
 
 The move to **Amazon Bedrock AgentCore** (see the note at the top) doesn't
 change that profile. AgentCore is consumption-billed with no upfront or minimum
@@ -204,7 +198,7 @@ a standing one.
 That's a real change from this range's original profile: it used to run on
 **OpenSearch Serverless**, which held a fixed multi-OCU allocation even fully
 idle - roughly $350/month at the ~2-OCU floor, the one range in the series you
-genuinely couldn't leave standing. Aurora's scale-to-zero closes that gap, so
+genuinely couldn't leave standing. S3 Vectors has no idle floor, so
 the "deploy in a sandbox account, walk it, tear it down" guidance below is now
 about hygiene and credential exposure, the same reason range-03 gives it -
 not a four-figure-a-year bill for forgetting a `terraform destroy`.

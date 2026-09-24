@@ -1,15 +1,14 @@
 # -------------------------------------------------------
 # BEDROCK KNOWLEDGE BASE  (unchanged by the AgentCore migration)
 # Uses the S3 bucket as its data source. The vector store is
-# Aurora PostgreSQL Serverless v2 + pgvector (see aurora.tf) -
-# not OpenSearch Serverless.
+# Amazon S3 Vectors (see vectors.tf).
 #
 # NOTE ON THE MIGRATION: Amazon Bedrock Agents ("Classic")
 # entered maintenance mode on 2026-07-30 and CreateAgent is
 # hard-blocked for any account without prior Bedrock Agents
 # usage -- which is every fresh evaluator/recruiter account.
 # Knowledge Bases and the bedrock:Retrieve API were NEVER part
-# of that gate, so this KB (and its Aurora backend) survives the
+# of that gate, so this KB (and its vector store) survives the
 # migration untouched. The agent itself is rebuilt on Amazon
 # Bedrock AgentCore (harness + gateway) further down this file.
 # -------------------------------------------------------
@@ -27,26 +26,21 @@ resource "aws_bedrockagent_knowledge_base" "main" {
   }
 
   storage_configuration {
-    type = "RDS"
-    rds_configuration {
-      resource_arn           = aws_rds_cluster.kb.arn
-      credentials_secret_arn = aws_rds_cluster.kb.master_user_secret[0].secret_arn
-      database_name          = aws_rds_cluster.kb.database_name
-      table_name             = "bedrock_integration.bedrock_kb"
-      field_mapping {
-        primary_key_field = "id"
-        vector_field      = "embedding"
-        text_field        = "chunks"
-        metadata_field    = "metadata"
-      }
+    type = "S3_VECTORS"
+    s3_vectors_configuration {
+      index_arn = aws_s3vectors_index.kb.index_arn
     }
   }
 
-  # The pgvector extension, schema, table, and indexes must exist before the
-  # knowledge base can be created.
-  depends_on = [
-    null_resource.pgvector_chunks_index
-  ]
+  depends_on = [time_sleep.kb_iam_ready]
+}
+
+# CreateKnowledgeBase validates that the service role can reach the vector
+# index, which races IAM propagation of knowledge_base_policy -- the policy is
+# only created once the index exists, seconds before the knowledge base.
+resource "time_sleep" "kb_iam_ready" {
+  create_duration = "20s"
+  depends_on      = [aws_iam_role_policy.knowledge_base_policy]
 }
 
 # Data source - points the knowledge base at the S3 bucket
@@ -56,10 +50,10 @@ resource "aws_bedrockagent_data_source" "s3_docs" {
   description       = "S3 bucket containing ACME Corp internal documentation"
 
   # On destroy, Bedrock otherwise tries to purge this source's vectors from the
-  # Aurora store first; if the cluster or the KB service role's access is already
+  # vector index first; if the index or the KB service role's access is already
   # gone, that purge fails and the data source sticks in DELETE_UNSUCCESSFUL.
-  # RETAIN skips the purge -- the Aurora cluster is destroyed wholesale anyway,
-  # so the vectors go with it. Makes teardown of this range reliable.
+  # RETAIN skips the purge -- the vector bucket is force-destroyed wholesale
+  # anyway, so the vectors go with it. Makes teardown of this range reliable.
   data_deletion_policy = "RETAIN"
 
   data_source_configuration {
@@ -84,7 +78,7 @@ resource "aws_bedrockagent_data_source" "s3_docs" {
 # in particular so a solver can discover the reference-tag convention by asking
 # the assistant (the breadcrumb is Deny'd for direct S3 read; see iam.tf). The
 # AWS CLI is invoked directly as the interpreter (no shell) so the args aren't
-# mangled by cmd /C on Windows, same technique as the pgvector provisioners.
+# mangled by cmd /C on Windows.
 # StartIngestionJob is async; the KB may take a minute after apply to become
 # queryable. Re-runs when any seed document changes (see triggers).
 resource "null_resource" "initial_ingestion" {
@@ -113,7 +107,6 @@ resource "null_resource" "initial_ingestion" {
     aws_s3_object.legit_doc_1,
     aws_s3_object.legit_doc_2,
     aws_s3_object.kb_admin_notes,
-    null_resource.pgvector_chunks_index,
   ]
 }
 
@@ -162,8 +155,7 @@ resource "aws_bedrockagentcore_gateway" "tools" {
 # Lambda at creation time, and that check races IAM propagation of the gateway
 # role policy and the Lambdas' resource-based grants -- without a beat to let
 # them settle, target creation fails with "Gateway execution role lacks
-# permission to invoke Lambda function". Same eventual-consistency shape as the
-# pgvector/Data-API waits in aurora.tf.
+# permission to invoke Lambda function".
 resource "time_sleep" "gateway_iam_ready" {
   create_duration = "30s"
   depends_on = [
@@ -177,7 +169,7 @@ resource "time_sleep" "gateway_iam_ready" {
 # GATEWAY TARGET 1 - KNOWLEDGE-BASE RETRIEVAL  (benign, least privilege)
 # Exposes a single searchKnowledgeBase tool backed by the
 # retrieval Lambda, which calls bedrock:Retrieve against the
-# Aurora-backed knowledge base. Its execution role can do nothing
+# knowledge base. Its execution role can do nothing
 # but retrieve - this is the leg of the scenario that is SUPPOSED
 # to be safe.
 # -------------------------------------------------------

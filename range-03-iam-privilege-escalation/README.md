@@ -118,13 +118,11 @@ AI/agentic entry in the series - both ranges land in the same near-zero
 tier today, but for structurally different reasons. `range-03` has nothing
 compute-bearing at all: IAM and S3 don't meter by the hour, so there's
 simply no bill to run up. `range-04` has real standing infrastructure
-(Amazon Bedrock AgentCore, Lambda, an Aurora PostgreSQL Serverless v2 vector
-store) that happens to scale to zero when idle rather than having no meter to
-begin with - it bills **$0.12/ACU-hour** (Aurora Standard, us-east-1, AWS pricing
-at time of writing) for however long it's actually doing something, then
-drops to **$0.10/GB-month** storage-only cost a few minutes after you stop -
-a few cents for a knowledge base this small. (AgentCore itself is
-consumption-billed and adds nothing at idle - pennies per walk of the chain.) (It didn't
+(Amazon Bedrock AgentCore, Lambda, an Amazon S3 Vectors vector store) that is
+all consumption-billed rather than having no meter to begin with - S3 Vectors
+charges only for vector storage and requests, a rounding error for a knowledge
+base this small, and AgentCore adds nothing at idle - pennies per walk of the
+chain. (It didn't
 always work this way: `range-04` used to run on OpenSearch Serverless,
 which held a fixed ~2-OCU allocation - roughly $350/month - even fully
 idle, making it the one range in the series you couldn't safely leave

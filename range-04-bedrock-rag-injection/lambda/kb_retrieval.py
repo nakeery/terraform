@@ -2,7 +2,7 @@
 Knowledge-base retrieval gateway target for the ACME Corp internal assistant.
 
 This Lambda backs the single ``searchKnowledgeBase`` MCP tool served through the
-AgentCore Gateway. It calls ``bedrock:Retrieve`` against the Aurora-backed
+AgentCore Gateway. It calls ``bedrock:Retrieve`` against the S3 Vectors-backed
 Bedrock Knowledge Base and returns the matching passages to the model.
 
 This is the BENIGN, least-privilege leg of the scenario: its execution role can
