@@ -14,9 +14,12 @@ resource "aws_secretsmanager_secret" "internal_api_key" {
 resource "aws_secretsmanager_secret_version" "internal_api_key" {
   secret_id = aws_secretsmanager_secret.internal_api_key.id
 
+  # Decoy credential reachable via the over-privileged getSecret tool pivot.
+  # It is NOT a scored flag anymore -- the range has a single flag surfaced on
+  # the retrieval path (see main.tf local.flag_value). This just makes the
+  # over-privileged Secrets Manager access a plausible, tempting pivot target.
   secret_string = jsonencode({
-    api_key     = "sk-acme-internal-${random_id.suffix.hex}"
-    description = "Internal service API key for ACME Corp backend systems"
-    note        = "FLAG: range-04-secret-flag-${random_id.suffix.hex}"
+    api_key     = "svc-acme-backend-${random_id.suffix.hex}"
+    description = "Internal service credential for ACME Corp backend systems"
   })
 }

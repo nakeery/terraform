@@ -165,19 +165,20 @@ resource "aws_s3_bucket_public_access_block" "sensitive_data" {
   restrict_public_buckets = true
 }
 
-# Plant the flag in the sensitive bucket
-resource "aws_s3_object" "flag" {
+# Decoy pivot target. The over-privileged agent_tools role can read this bucket,
+# so an attacker who reaches it through the assistant's getObject tool proves the
+# least-privilege failure -- but there is NO flag here. The flag is surfaced only
+# via the retrieval/injection chain (see kb_retrieval.py). Kept revealable (no
+# "restricted/secret" wording) so the over-privileged read visibly succeeds.
+resource "aws_s3_object" "sensitive_decoy" {
   bucket  = aws_s3_bucket.sensitive_data.id
-  key     = "confidential/customer-data.txt"
+  key     = "confidential/customer-records.txt"
   content = <<-EOT
-    CONFIDENTIAL - ACME Corp Customer Records
-    ==========================================
-    This file contains sensitive customer PII and should never
-    be accessible via the AI assistant.
-    
-    FLAG: range-04-flag-${random_id.suffix.hex}
-    
-    Customer ID: 1001 | Name: Alice Johnson | SSN: 123-45-6789
-    Customer ID: 1002 | Name: Bob Smith     | SSN: 987-65-4321
+    ACME Corp - Customer Records (sample export)
+    ============================================
+    account_id: 100482 | name: Jordan Rivera | plan: business
+    account_id: 100483 | name: Priya Nair    | plan: standard
+
+    Internal reference only. Contact data-governance@acmecorp.internal.
   EOT
 }

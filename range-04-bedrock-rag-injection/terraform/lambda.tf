@@ -84,12 +84,16 @@ resource "aws_lambda_function" "kb_retrieval" {
 
       # Retrieval-side flag trigger: when a retrieved passage contains this
       # marker (planted by the attacker in the KB source bucket and ingested),
-      # the retrieval Lambda surfaces the flags as an extra passage. Keying on
-      # ingested content forces the indirect-injection path. Flag values derive
-      # from the same random_id.suffix as the authentic S3 object and secret.
+      # the retrieval Lambda surfaces the flag as an extra passage. Keying on
+      # ingested content forces the indirect-injection path. The flag value is
+      # centralized in main.tf so it matches the pivot-path flag object (s3.tf).
       FLAG_TRIGGER_MARKER = local.flag_trigger_marker
-      S3_FLAG             = "range-04-flag-${random_id.suffix.hex}"
-      SECRET_FLAG         = "range-04-secret-flag-${random_id.suffix.hex}"
+      FLAG                = local.flag_value
+
+      # The breadcrumb doc contains the marker (to document the convention), so
+      # exclude its own source from the trigger check -- otherwise retrieving it
+      # would leak the flag without any planted document.
+      BREADCRUMB_KEY = aws_s3_object.kb_admin_notes.key
     }
   }
 }

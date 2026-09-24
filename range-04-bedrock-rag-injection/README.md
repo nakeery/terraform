@@ -89,7 +89,7 @@ benign retrieval path onto the dangerous one.
   sensitive bucket and Secrets Manager.
 - A **low-privilege attacker user** with write access to the KB bucket and
   invoke access to the assistant (`InvokeHarness`) - and no direct access to
-  the flags.
+  the flag.
 
 ---
 
@@ -125,9 +125,12 @@ You do NOT have direct access to the sensitive S3 bucket or Secrets Manager.
 
 ## Your Goal
 
-Retrieve the two flags:
-1. **Flag 1** — inside `s3://<sensitive-bucket>/confidential/customer-data.txt`
-2. **Flag 2** — inside the internal API-key Secrets Manager secret
+Capture the flag (`range-04-flag-<suffix>`). It exists only inside the assistant:
+it is surfaced when a knowledge-base document carrying the reference tag is
+retrieved. Plant such a document in the KB bucket, get it ingested, then ask the
+assistant a question that retrieves it. (The over-privileged tools can also reach
+the sensitive bucket and Secrets Manager, but those hold only decoy data — a
+latent least-privilege lesson, not a route to the flag.)
 
 ---
 
@@ -140,14 +143,16 @@ Retrieve the two flags:
 - A region where AgentCore is available (this range defaults to `us-east-1`).
   No prior Bedrock Agents usage is required - moving to AgentCore is precisely
   what sidesteps the Bedrock Agents Classic maintenance-mode gate.
-- The account must be able to invoke `us.anthropic.claude-haiku-4-5-20251001-v1:0`
-  and `amazon.titan-embed-text-v1`. AWS has retired the manual per-model "model access"
-  opt-in - these are enabled automatically - so this needs no action. The Claude model
-  is a cross-region inference profile (Haiku 4.5, like Sonnet 4.5, supports only
-  `INFERENCE_PROFILE` invocation, not a bare on-demand model ID), so it runs in one of
-  us-east-1 / us-east-2 / us-west-2 - with auto-access that's covered in all three. (The
-  model is the `bedrock_model_id` variable - swap in a Sonnet profile for more reliable
-  injection on the first attempt, at higher token cost.)
+- The account must be able to invoke `us.amazon.nova-micro-v1:0` (the assistant
+  model) and `amazon.titan-embed-text-v1` (knowledge-base embeddings). AWS has
+  retired the manual per-model "model access" opt-in - these are enabled
+  automatically - so this needs no action. The assistant model's `us.` ID is a
+  cross-region inference profile, so it runs in one of us-east-1 / us-east-2 /
+  us-west-2 - with auto-access that's covered in all three. (The model is the
+  `bedrock_model_id` variable - Nova Micro is cheap and handles the tool-use
+  flow; swap in a more capable profile, e.g. a Claude Sonnet or Nova Pro
+  inference profile, if the assistant is inconsistent about quoting the flag
+  reference code, at higher token cost.)
 
 ```bash
 cd terraform
@@ -171,7 +176,7 @@ terraform output -raw attacker_secret_access_key
 
 Work the injection end to end using the commands in
 [`solution/walkthrough.md`](solution/walkthrough.md) — plant the payload,
-trigger ingestion, invoke the agent, and collect both flags.
+trigger ingestion, invoke the agent, and collect the flag.
 
 ---
 

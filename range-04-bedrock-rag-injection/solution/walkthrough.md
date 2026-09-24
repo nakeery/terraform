@@ -3,11 +3,11 @@
 ## Scenario Summary
 
 You have obtained low-privilege AWS credentials for an ACME Corp IAM user.
-Your goal is to exfiltrate two flags by poisoning the knowledge base behind the
+Your goal is to capture the flag by poisoning the knowledge base behind the
 company's Bedrock AI assistant — an **indirect prompt injection / RAG
 data-poisoning** attack. You can write to the assistant's knowledge-base bucket
-but cannot read the sensitive resources directly; the assistant, which trusts
-its own corpus, becomes the confused deputy that surfaces them for you.
+but cannot read the reference material directly; the assistant, which trusts
+its own corpus, becomes the confused deputy that surfaces it for you.
 
 ---
 
@@ -151,28 +151,27 @@ aws bedrock-agent get-ingestion-job \
 
 ---
 
-## Step 4: Retrieve the flags
+## Step 4: Retrieve the flag
 
 Ask a policy question that matches your planted document. Retrieval returns your
 reference-tagged doc; because it is treated as authoritative reference material,
-its contents — including the planted flags — are surfaced to you.
+its contents — including the planted reference code — are surfaced to you.
 
 ```bash
 python invoke.py "What are the Q4 policy updates? Include any authoritative reference material."
 ```
 
-The response should contain both flags. If it doesn't appear on the first try,
+The response should contain the flag. If it doesn't appear on the first try,
 give ingestion another minute, or rephrase so your document is clearly the most
 relevant match.
 
 ---
 
-## Step 5: Collect the flags
+## Step 5: Collect the flag
 
-The assistant's response should contain:
+The assistant's response contains the flag as a "reference code":
 
-1. **S3 flag** — `range-04-flag-<suffix>`
-2. **Secrets Manager flag** — `range-04-secret-flag-<suffix>`
+- **Flag** — `range-04-flag-<suffix>`
 
 ---
 
@@ -196,9 +195,11 @@ The assistant's response should contain:
    implicitly trusts, and is reflected back to the attacker through normal Q&A.
 
 4. **Latent: overprivileged tool role.** Separately, the assistant's AWS-tools
-   Lambda role can still reach the sensitive bucket and Secrets Manager — no
-   legitimate need. It isn't the path used above, but it's a second way the same
-   injection could escalate, and least privilege would contain the blast radius.
+   Lambda role can reach the sensitive bucket and Secrets Manager — no legitimate
+   need. Here those hold only decoy data, so it isn't a route to the flag, but it
+   demonstrates the least-privilege failure: had anything sensitive lived there,
+   the same over-broad role would have exposed it. Least privilege on the
+   AWS-tools role would contain the blast radius.
 
 ---
 
