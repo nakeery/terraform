@@ -7,9 +7,19 @@ resource "aws_eks_cluster" "main" {
   version  = var.kubernetes_version
 
   vpc_config {
-    subnet_ids              = aws_subnet.public[*].id
-    endpoint_public_access  = true
-    endpoint_private_access = false
+    subnet_ids = aws_subnet.public[*].id
+
+    endpoint_public_access = true
+    # Locked to the operator's IP (see access.tf) instead of the 0.0.0.0/0
+    # default, so only this machine can reach the Kubernetes API server.
+    public_access_cidrs = local.allowed_source_cidrs
+
+    # Enabled so worker nodes reach the control plane over the in-VPC private
+    # path. Without this, restricting public_access_cidrs to the operator IP
+    # would cut off the public-subnet nodes (they'd egress from a different IP)
+    # and break the cluster. Not an attack-chain element - the exploit reaches
+    # the API from inside the pod, not via this endpoint.
+    endpoint_private_access = true
   }
 
   # -------------------------------------------------------

@@ -1,3 +1,12 @@
+# =====================================================================
+# REFERENCE ONLY - not applied by hand anymore.
+# These workloads are now deployed by terraform/k8s.tf (hashicorp/kubernetes
+# provider) so `terraform destroy` tears down the LoadBalancer's NLB instead of
+# orphaning it. This file is kept for its annotated attack-chain walkthrough and
+# the range-01 diff. Do NOT `kubectl apply` it alongside Terraform - that would
+# create duplicate/conflicting objects.
+# =====================================================================
+#
 # ATTACK CHAIN STEP 1 - EXPOSED ADMIN TOOLING, NO AUTH
 #
 # This is the entry point of the attack chain, modeled directly on
@@ -84,6 +93,12 @@ apiVersion: v1
 kind: Service
 metadata:
   name: vulnerable-dashboard-service
+  annotations:
+    # Provision a Network Load Balancer (L4) instead of the legacy Classic ELB
+    # the in-tree provisioner defaults to - matches range-01. NOTE: the live
+    # object (terraform/k8s.tf) also restricts loadBalancerSourceRanges to the
+    # operator's IP; that isn't shown here because Terraform auto-detects it.
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
 spec:
   type: LoadBalancer
   selector:

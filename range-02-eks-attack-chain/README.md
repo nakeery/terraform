@@ -59,10 +59,14 @@ terraform plan
 terraform apply
 ```
 
+`terraform apply` also deploys the vulnerable workloads, via `terraform/k8s.tf` -
+there is no separate `kubectl apply` step. (The manifests in `k8s/` are kept as
+annotated reference for the walkthrough and the range-01 diff.) To connect
+kubectl and walk the chain:
+
 ```bash
 terraform output -raw configure_kubectl | bash
-kubectl get nodes
-kubectl apply -f ../k8s/
+kubectl get pods,svc
 ```
 
 ## Cost and safety - read before you leave this running
@@ -73,12 +77,18 @@ cluster-admin-bound pod with an over-privileged node role is not
 something to let sit.
 
 - **Deploy in an isolated/sandbox AWS account if at all possible.**
+- Both public surfaces - the EKS API endpoint and the dashboard load balancer -
+  are auto-locked to your current public IP. Terraform detects it via
+  `data.http.my_ip` (checkip.amazonaws.com), so no `-var` is needed. If your IP
+  changes, re-run `terraform apply` (which refreshes the allowlist) *before*
+  `terraform destroy`, or the in-cluster teardown can't reach the API. If checkip
+  is unreachable, pass `-var='allowed_source_cidrs=["YOUR_IP/32"]'`.
 - **Stand it up, walk the chain, tear it down - same session, no exceptions.**
-- Same NLB-orphan gotcha as range-01-eks-secure-baseline applies: `kubectl delete -f ../k8s/`
-  before `terraform destroy`.
+- Terraform now owns the workloads (`terraform/k8s.tf`), so `terraform destroy`
+  deletes the `LoadBalancer` service - and the AWS NLB it created - in dependency
+  order, before the cluster. No `kubectl delete` first, no orphaned NLB.
 
 ```bash
-kubectl delete -f ../k8s/
-cd ../terraform
+cd terraform
 terraform destroy
 ```

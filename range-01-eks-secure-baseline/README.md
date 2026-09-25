@@ -51,13 +51,13 @@ kubectl get nodes
 
 You should see your worker nodes in `Ready` state.
 
-## Deploy nginx
+## nginx
+
+nginx is deployed by `terraform apply` too, via `terraform/k8s.tf` - there is no
+separate `kubectl apply` step. (The manifests in `k8s/` are kept as annotated
+reference and for the range-02 diff.)
 
 ```bash
-cd ../k8s
-kubectl apply -f nginx-deployment.yaml
-kubectl apply -f nginx-service.yaml
-
 # Watch for the LoadBalancer to get an external address (takes 1-2 min)
 kubectl get service nginx-service --watch
 ```
@@ -79,13 +79,12 @@ aws logs describe-log-groups --log-group-name-prefix "/aws/eks/eks-portfolio"
 
 ## Teardown
 
-```bash
-# Delete Kubernetes resources first - this also tears down
-# the NLB that Terraform doesn't manage directly
-kubectl delete -f ../k8s/
+Terraform now owns the nginx workload (`terraform/k8s.tf`), so a single
+`terraform destroy` deletes the `LoadBalancer` service - and the AWS NLB it
+created - in dependency order, before the cluster. No `kubectl delete` first.
 
-# Then destroy the infrastructure
-cd ../terraform
+```bash
+cd terraform
 terraform destroy
 ```
 

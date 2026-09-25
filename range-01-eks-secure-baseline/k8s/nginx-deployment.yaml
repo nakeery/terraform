@@ -1,3 +1,11 @@
+# =====================================================================
+# REFERENCE ONLY - not applied by hand anymore.
+# This workload is now deployed by terraform/k8s.tf (hashicorp/kubernetes
+# provider) so `terraform destroy` tears down the LoadBalancer's NLB (see
+# nginx-service.yaml) instead of orphaning it. Kept here as a readable manifest
+# and for the range-02 diff. Do NOT `kubectl apply` it alongside Terraform -
+# that would create duplicate/conflicting objects.
+# =====================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:

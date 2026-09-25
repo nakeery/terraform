@@ -1,3 +1,11 @@
+# =====================================================================
+# REFERENCE ONLY - not applied by hand anymore.
+# This Service is now deployed by terraform/k8s.tf (hashicorp/kubernetes
+# provider) so `terraform destroy` deletes it - and the backing AWS NLB - in
+# dependency order instead of orphaning the load balancer. Kept here as a
+# readable manifest and for the range-02 diff. Do NOT `kubectl apply` it
+# alongside Terraform - that would create duplicate/conflicting objects.
+# =====================================================================
 apiVersion: v1
 kind: Service
 metadata:
