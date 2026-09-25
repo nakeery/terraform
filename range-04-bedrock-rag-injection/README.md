@@ -157,8 +157,15 @@ latent least-privilege lesson, not a route to the flag.)
 ```bash
 cd terraform
 terraform init
-terraform apply -var='allowed_source_cidrs=["YOUR_IP/32"]'
+terraform apply
 ```
+
+The attacker credentials are auto-locked to your current public IP (detected via
+`data.http.my_ip`), so no `-var` is needed. Override with
+`-var='allowed_source_cidrs=["YOUR_IP/32","203.0.113.0/24"]'` to add CIDRs or if
+`checkip.amazonaws.com` is unreachable. This gates the attacker's *direct* API
+calls, so walk the chain from the same IP - `terraform destroy` runs as your own
+admin credentials and is unaffected.
 
 The vector store is an S3 vector bucket and index, which create (and
 destroy) in seconds - there's no database cluster to provision or schema to
@@ -211,7 +218,7 @@ not a four-figure-a-year bill for forgetting a `terraform destroy`.
 ## Teardown
 
 ```bash
-terraform destroy -var='allowed_source_cidrs=["YOUR_IP/32"]'
+terraform destroy
 ```
 
 ---

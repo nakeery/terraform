@@ -28,7 +28,7 @@ resource "aws_iam_user_policy" "attacker_policy" {
         Action   = ["s3:ListAllMyBuckets"]
         Resource = "*"
         Condition = {
-          IpAddress = { "aws:SourceIp" = var.allowed_source_cidrs }
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
         }
       },
       {
@@ -44,7 +44,7 @@ resource "aws_iam_user_policy" "attacker_policy" {
           "${aws_s3_bucket.knowledge_base.arn}/*"
         ]
         Condition = {
-          IpAddress = { "aws:SourceIp" = var.allowed_source_cidrs }
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
         }
       },
       {
@@ -74,7 +74,7 @@ resource "aws_iam_user_policy" "attacker_policy" {
         ]
         Resource = aws_bedrockagentcore_harness.assistant.arn
         Condition = {
-          IpAddress = { "aws:SourceIp" = var.allowed_source_cidrs }
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
         }
       },
       {
@@ -95,7 +95,7 @@ resource "aws_iam_user_policy" "attacker_policy" {
         ]
         Resource = aws_bedrockagent_knowledge_base.main.arn
         Condition = {
-          IpAddress = { "aws:SourceIp" = var.allowed_source_cidrs }
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
         }
       }
     ]

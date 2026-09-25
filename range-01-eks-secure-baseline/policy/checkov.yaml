@@ -8,11 +8,12 @@ directory:
   - terraform
 
 skip-check:
-  # endpoint_public_access = true is a deliberate tradeoff so kubectl
-  # reaches the cluster without a bastion/VPN (see eks.tf). A hardened
+  # endpoint_public_access = true is a deliberate tradeoff so kubectl reaches
+  # the cluster without a bastion/VPN, but it's now locked to the operator's IP
+  # via public_access_cidrs (see eks.tf / access.tf), so it is no longer open to
+  # 0.0.0.0/0 - CKV_AWS_38 now passes and is no longer skipped here. A hardened
   # production build would use a private-only endpoint instead.
-  - CKV_AWS_39   # EKS public endpoint disabled - accepted, see eks.tf
-  - CKV_AWS_38   # EKS public endpoint open to 0.0.0.0/0 - accepted, see eks.tf
+  - CKV_AWS_39   # public endpoint still enabled (now IP-restricted) - accepted, see eks.tf
   - CKV_AWS_339  # Kubernetes version pinned to 1.36; not in checkov's supported list
 
   # The checks below are consciously accepted for this teaching baseline,

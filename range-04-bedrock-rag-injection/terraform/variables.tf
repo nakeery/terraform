@@ -11,9 +11,9 @@ variable "scenario_id" {
 }
 
 variable "allowed_source_cidrs" {
-  description = "List of CIDR IPs allowed to interact with the scenario (applied as an aws:SourceIp condition on the attacker credentials)"
+  description = "CIDRs allowed to use the attacker credentials (aws:SourceIp condition on the attacker policy). Defaults to the operator's auto-detected IP (see access.tf); set this to override, e.g. to add CIDRs or if checkip is unreachable."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = null
 }
 
 # aws bedrock list-inference-profiles --region us-east-1 --type-equals SYSTEM_DEFINED --query "inferenceProfileSummaries[].inferenceProfileId" --output json

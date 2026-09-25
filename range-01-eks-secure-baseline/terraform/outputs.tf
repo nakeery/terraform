@@ -13,6 +13,16 @@ output "configure_kubectl" {
   value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}"
 }
 
+output "allowed_source_cidrs" {
+  description = "CIDRs the API endpoint and nginx NLB are locked to (auto-detected operator IP unless overridden)"
+  value       = local.allowed_source_cidrs
+}
+
+output "service_url" {
+  description = "URL of the nginx NLB - reachable only from allowed_source_cidrs"
+  value       = "http://${kubernetes_service_v1.nginx.status[0].load_balancer[0].ingress[0].hostname}"
+}
+
 output "vpc_id" {
   description = "VPC ID"
   value       = aws_vpc.main.id

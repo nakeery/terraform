@@ -10,6 +10,11 @@ output "attacker_secret_access_key" {
   sensitive   = true
 }
 
+output "allowed_source_cidrs" {
+  description = "CIDRs the attacker credentials are restricted to (auto-detected operator IP unless overridden)"
+  value       = local.allowed_source_cidrs
+}
+
 output "knowledge_base_bucket" {
   description = "Name of the misconfigured knowledge base S3 bucket"
   value       = aws_s3_bucket.knowledge_base.bucket

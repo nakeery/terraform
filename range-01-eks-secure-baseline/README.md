@@ -42,6 +42,13 @@ terraform apply
 Cluster creation takes 10-15 minutes - the control plane provisioning is slow,
 this is normal.
 
+Both public surfaces - the EKS API endpoint and the nginx NLB - are auto-locked
+to your current public IP (detected via `data.http.my_ip`), so no `-var` is
+needed. If your IP changes, re-run `terraform apply` (which refreshes the
+allowlist) *before* `terraform destroy`, or the kubernetes provider can't reach
+the API to delete the in-cluster resources. If `checkip.amazonaws.com` is
+unreachable, pass `-var='allowed_source_cidrs=["YOUR_IP/32"]'`.
+
 ## Connect kubectl
 
 ```bash

@@ -115,6 +115,10 @@ resource "kubernetes_service_v1" "nginx" {
     type     = "LoadBalancer"
     selector = { app = "nginx" }
 
+    # Scope the NLB's inbound to the operator's IP (see access.tf) instead of the
+    # internet. Enforced at the worker-node security group by the in-tree NLB.
+    load_balancer_source_ranges = local.allowed_source_cidrs
+
     port {
       protocol    = "TCP"
       port        = 80

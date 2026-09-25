@@ -57,6 +57,13 @@ resource "aws_iam_user_policy" "step1_self_attach" {
         Effect   = "Allow"
         Action   = ["iam:AttachUserPolicy", "iam:ListPolicies"]
         Resource = "*"
+
+        # Restrict the foothold's direct calls to the operator's IP (see
+        # access.tf). This gates only the low-priv user's own calls - the
+        # escalation in Steps 2-3 runs as other principals and escapes it.
+        Condition = {
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
+        }
       }
     ]
   })
@@ -124,6 +131,11 @@ resource "aws_iam_user_policy" "step2_create_access_key" {
         Effect   = "Allow"
         Action   = ["iam:CreateAccessKey", "iam:ListUsers", "iam:ListAccessKeys"]
         Resource = "*"
+
+        # Same operator-IP gate as Step 1 (see access.tf).
+        Condition = {
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
+        }
       }
     ]
   })
@@ -173,6 +185,11 @@ resource "aws_iam_user_policy" "step3_passrole_lambda" {
         Effect   = "Allow"
         Action   = ["iam:PassRole", "lambda:CreateFunction", "lambda:InvokeFunction"]
         Resource = "*"
+
+        # Same operator-IP gate as Step 1 (see access.tf).
+        Condition = {
+          IpAddress = { "aws:SourceIp" = local.allowed_source_cidrs }
+        }
       }
     ]
   })

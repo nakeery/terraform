@@ -14,6 +14,10 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
   }
 
   # For a real portfolio project, consider using an S3 backend

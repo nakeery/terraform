@@ -21,6 +21,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
   }
 
   # No S3 backend here - same as the sibling ranges, local state is

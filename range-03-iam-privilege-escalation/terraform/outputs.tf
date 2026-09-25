@@ -10,6 +10,11 @@ output "attacker_secret_access_key" {
   sensitive   = true
 }
 
+output "allowed_source_cidrs" {
+  description = "CIDRs the low-priv foothold credentials are restricted to (auto-detected operator IP unless overridden)"
+  value       = local.allowed_source_cidrs
+}
+
 output "admin_target_user_name" {
   description = "The higher-privileged victim user. STEP 2 mints an access key for this user - it has no key of its own by design."
   value       = aws_iam_user.admin_target.name

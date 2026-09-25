@@ -24,6 +24,10 @@ resource "aws_eks_cluster" "main" {
     # this is the accepted tradeoff documented in policy/checkov.yaml.
     endpoint_public_access  = true
     endpoint_private_access = true
+
+    # Locked to the operator's IP (see access.tf) instead of the 0.0.0.0/0
+    # default, so the API server is no longer reachable from the whole internet.
+    public_access_cidrs = local.allowed_source_cidrs
   }
 
   # Enables control plane logging to CloudWatch - the forensic trail

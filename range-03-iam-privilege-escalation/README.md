@@ -69,6 +69,16 @@ terraform plan
 terraform apply
 ```
 
+The low-priv foothold credentials are locked to your current public IP - the
+attacker's inline policies carry an `aws:SourceIp` condition set to your
+auto-detected IP (via `data.http.my_ip`), so no `-var` is needed. Override with
+`-var='allowed_source_cidrs=["YOUR_IP/32"]'` if `checkip.amazonaws.com` is
+unreachable. Walk the chain from that same IP, or the foothold calls get
+`AccessDenied`. The gate only covers the low-priv user's *direct* calls: once you
+mint `admin-target`'s key (Step 2) or run the Lambda role (Step 3), those calls
+aren't IP-bound. `terraform destroy` runs as your own admin credentials and is
+unaffected.
+
 ## Connect (as the attacker)
 
 Pull the foothold credentials from the outputs and load them into a
