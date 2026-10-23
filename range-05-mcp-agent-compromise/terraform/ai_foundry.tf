@@ -1,0 +1,172 @@
+# =======================================================
+# ATTACK CHAIN STEP 2 - THE AGENT (Azure AI Foundry / Azure OpenAI)
+#
+# Azure AI Foundry account configured for project management (the
+# modern Foundry resource shape - NOT the legacy Hub/Workspace
+# pattern that azurerm_ai_foundry / azurerm_ai_foundry_project model;
+# see NOTES.md for why that older pair was rejected for this range),
+# a Foundry project under it, and a tool/function-calling-capable
+# Azure OpenAI chat model deployment. The over-scoped identity from
+# identity.tf is attached here via `identity {}` - this account is
+# the agent's compute from Terraform's point of view: Azure AI
+# Foundry Agent Service is fully managed, so there is no VM,
+# container, or App Service of our own to attach the identity to.
+#
+# Azure AI Content Safety / Prompt Shields is wired in as a custom
+# RAI (Responsible AI) policy with its Jailbreak and Indirect Attack
+# content filters turned on and set to block - this is the Prompt
+# Shields capability, exposed through the azurerm provider as
+# content_filter blocks on azurerm_cognitive_account_rai_policy
+# (confirmed against the provider's current resource schema; see
+# NOTES.md). The deployment references that policy via
+# rai_policy_name, which is required for the guardrail test this
+# range sets up for later - without it, the deployment falls back to
+# the account's default content filter, which does not expose these
+# categories as a policy you can point at.
+#
+# NOT COVERED HERE: the Agent object itself (its name, instructions,
+# and tool/function JSON schema) and the actual MCP-style tool
+# backend it calls. As of this writing there is no stable azurerm
+# (or documented azapi) resource for
+# Microsoft.CognitiveServices/accounts/projects/agents - Agent
+# creation happens through the Azure AI Foundry Agents SDK or REST
+# API against the project endpoint exported in outputs.tf, after this
+# stack is applied. See NOTES.md for what was checked and the
+# TODO below for exactly what's left.
+# =======================================================
+
+resource "azurerm_cognitive_account" "foundry" {
+  name                = "aif-${local.name_prefix}-${local.suffix}"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  kind     = "AIServices"
+  sku_name = "S0"
+
+  # Required for Entra ID / managed-identity-dependent features,
+  # including the Agent Service, and for project_management_enabled.
+  custom_subdomain_name = "aif-${local.name_prefix}-${local.suffix}"
+
+  # Enables the modern Foundry "project" child resource used below.
+  project_management_enabled = true
+
+  # THE OVER-SCOPED IDENTITY. This is the only identity attached to
+  # the agent's compute - see identity.tf for exactly what it can
+  # reach and why that's more than the agent's job requires.
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.agent.id]
+  }
+
+  # Reachable, but only from local.allowed_source_cidrs (access.tf) - the
+  # orchestrator (orchestrator/agent_loop.py) calls this account's chat-
+  # completions endpoint directly from wherever the operator runs it, so
+  # this is the actual "front door" worth restricting, same reasoning as
+  # the storage account and the Container App ingress below.
+  # TODO (yours to complete): go further still - a private endpoint +
+  # VNet, matching the networking lockdown already done for ranges 1 & 2
+  # - and re-verify the model deployment still works over the private
+  # path before relying on it for a walkthrough.
+  public_network_access_enabled = true
+
+  network_acls {
+    default_action = "Deny"
+    ip_rules       = local.allowed_source_cidrs
+  }
+
+  tags = local.common_tags
+}
+
+resource "azurerm_cognitive_account_project" "support_agent" {
+  name                 = "proj-${local.name_prefix}-${local.suffix}"
+  cognitive_account_id = azurerm_cognitive_account.foundry.id
+  location             = azurerm_cognitive_account.foundry.location
+  display_name         = "MCP Agent Compromise - Support Agent"
+  description          = "Internal support agent project - tool/function-calling enabled, backs the range-05 scenario."
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = local.common_tags
+}
+
+# -------------------------------------------------------
+# CONTENT SAFETY / PROMPT SHIELDS
+# Custom RAI policy with Jailbreak and Indirect Attack filtering
+# enabled and set to block on the prompt side. These two categories
+# ARE Prompt Shields - the azurerm provider has no separate
+# "Content Safety account" resource for this; it's configured as a
+# content_filter on the RAI policy attached to the deployment below.
+# The provider's documentation says severity_threshold "does not
+# apply" to Jailbreak/Indirect Attack, but the azurerm 4.x schema
+# still marks the argument required on every content_filter block
+# regardless of filter type (confirmed by `terraform validate`
+# against provider 4.81.0) - set to "Low" on both as a required-but-
+# inert placeholder; it has no effect on these two categories.
+# -------------------------------------------------------
+resource "azurerm_cognitive_account_rai_policy" "prompt_shields" {
+  name                 = "range05-prompt-shields"
+  cognitive_account_id = azurerm_cognitive_account.foundry.id
+  base_policy_name     = "Microsoft.DefaultV2"
+  mode                 = "Blocking"
+
+  content_filter {
+    name               = "Jailbreak"
+    source             = "Prompt"
+    filter_enabled     = true
+    block_enabled      = true
+    severity_threshold = "Low"
+  }
+
+  content_filter {
+    name               = "Indirect Attack"
+    source             = "Prompt"
+    filter_enabled     = true
+    block_enabled      = true
+    severity_threshold = "Low"
+  }
+
+  tags = local.common_tags
+}
+
+# -------------------------------------------------------
+# MODEL DEPLOYMENT - tool/function-calling enabled
+# Tool/function calling is a capability of the chat-completions
+# model itself (gpt-4o family), not a separate switch - it's
+# enabled by presenting the model with a tool manifest at inference
+# time, which is part of the Agent object (see the TODO below), not
+# this deployment. What this resource controls is which model is
+# deployed, its throughput, and - via rai_policy_name - the Prompt
+# Shields policy above.
+# -------------------------------------------------------
+resource "azurerm_cognitive_deployment" "agent_model" {
+  name                 = "range05-agent-model"
+  cognitive_account_id = azurerm_cognitive_account.foundry.id
+
+  model {
+    format  = "OpenAI"
+    name    = var.openai_model_name
+    version = var.openai_model_version
+  }
+
+  sku {
+    name     = "GlobalStandard"
+    capacity = var.openai_deployment_capacity
+  }
+
+  rai_policy_name = azurerm_cognitive_account_rai_policy.prompt_shields.name
+
+  depends_on = [azurerm_cognitive_account_project.support_agent]
+}
+
+# TODO (yours to complete): create the Agent object + its single
+# tool/function definition (the FAQ-lookup tool described in
+# identity.tf) via the Azure AI Foundry Agents SDK or REST API
+# (POST {project endpoint}/assistants, api-version per the current
+# Foundry Agents REST reference) against
+# azurerm_cognitive_account_project.support_agent's endpoint, once
+# this stack is applied. Give the agent ONLY the FAQ-lookup tool
+# in its manifest - the point of this range is that the identity
+# behind it is over-scoped regardless of how narrow the tool
+# manifest is kept.

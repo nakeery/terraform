@@ -1,0 +1,3 @@
+openai==1.54.4
+azure-identity==1.19.0
+mcp==2.3.0

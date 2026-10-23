@@ -1,0 +1,13 @@
+[project]
+name = "range-05-mcp-agent-compromise-server"
+version = "0.1.0"
+description = "MCP server for range-05: agent/tool-layer vulnerability class demos (see HANDOFF.md)."
+requires-python = ">=3.10"
+dependencies = [
+    "mcp==2.3.0",
+    "azure-identity==1.19.0",
+    "azure-keyvault-secrets==4.9.0",
+]
+
+[tool.setuptools]
+py-modules = ["server", "mock_data"]

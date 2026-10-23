@@ -3,5 +3,9 @@
 *.tfvars
 *.backup*
 *.zip
+**/__pycache__/
+*.pyc
+venv/
+.venv/
 # Private companion notes, not part of the submitted repo
 REFERENCE.md
