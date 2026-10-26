@@ -189,13 +189,50 @@ the agent's documented legitimate data source is the FAQ blob
 (`agent-tool-data/support_faq.txt`), which would be read by a tool running
 in the Container App, not by the operator, and a Container App's
 data-plane blob read is not covered by the `AzureServices` trusted-bypass
-list. The identity.tf TODO ("add the correctly-scoped `Storage Blob Data
-Reader` grant... re-run the walkthrough to show the tool still works with
-least privilege") can't actually be demonstrated until this is fixed too.
+list. `identity.tf`'s `agent_storage_read_scoped` grant (the correctly-scoped
+`Storage Blob Data Reader`, added alongside the over-scoped grant as a
+documented before/after) can't actually be demonstrated live until this is
+fixed too.
 
 This is latent, not live, because none of the six MCP tools in
 `../mcp-server/server.py` reads storage yet (see design decision #4 above)
-- the "storage pivot" is still narrative, not demonstrated. Whoever builds
-that FAQ-lookup tool should also add the Container App's egress to the
-storage network rule (or move to Private Endpoints, since egress IPs
-aren't stable) before expecting the tool to actually work.
+- the "storage pivot" is still narrative, not demonstrated.
+
+**What the real fix costs (checked against current Microsoft Learn docs,
+2026-10-26, not assumed):** the available azurerm mechanism is
+`virtual_network_subnet_ids` on the storage account's `network_rules` (an
+Azure Storage *service endpoint*, not an IP allowlist, so it survives the
+Container App's outbound IP changing), paired with
+`infrastructure_subnet_id` on `azurerm_container_app_environment.main`. But
+giving the Container App Environment its own VNet integration isn't free or
+simple:
+
+- **Subnet sizing/delegation differ by environment type and the provider's
+  own docs disagree with Microsoft's.** The azurerm provider's
+  `container_app_environment` page states a `/21` minimum; Microsoft's
+  Container Apps networking docs say `/27` minimum **with mandatory
+  delegation to `Microsoft.App/environments`** for a workload-profile
+  environment (the current default), or `/23` minimum **with no delegation
+  allowed at all** for the legacy consumption-only environment type - this
+  stack doesn't declare which type it gets, so that would need pinning down
+  explicitly first.
+- **It adds standing cost this range's README doesn't currently budget
+  for.** Per Microsoft's docs, VNet-integrating a Container Apps environment
+  provisions a managed resource group with at least one standard **static
+  public IP** (for egress) and a **standard Load Balancer**, billed
+  continuously - on top of, not instead of, the Container App itself. That
+  changes this range's cost posture from "a small flat ACR fee" to
+  "meaningful standing infrastructure," which is a deliberate decision the
+  project owner should make, not something to default into.
+- **Private Endpoints** (the alternative `TODO` already called out on the
+  Foundry account in `ai_foundry.tf`) sidestep the delegation question but
+  still need the same dedicated subnet and carry their own per-endpoint
+  hourly charge.
+
+Given that cost/complexity and no live subscription available to verify
+either path actually plans and applies cleanly, this remains a `TODO (yours
+to complete)` rather than something implemented blind. Whoever builds the
+FAQ-lookup tool should decide workload-profile-with-delegation vs.
+consumption-only-without-delegation *first*, size the subnet accordingly,
+add the service endpoint, and budget for the new standing IP/LB cost before
+wiring it in.

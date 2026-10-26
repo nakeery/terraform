@@ -60,15 +60,38 @@ resource "azurerm_role_assignment" "agent_keyvault_read" {
 # Storage read/write - scoped to the WHOLE STORAGE ACCOUNT. The
 # tool only reads agent-tool-data/support_faq.txt. Correctly scoped,
 # this would be "Storage Blob Data Reader" on the agent-tool-data
-# CONTAINER alone.
-# TODO (yours to complete): add the "fixed" role assignment
-# (Storage Blob Data Reader, scoped to
-# azurerm_storage_container.tool_data.resource_manager_id) alongside
-# this one as a documented before/after, then remove the
-# over-scoped grant and re-run the walkthrough to show the tool
-# still works with least privilege.
+# CONTAINER alone - see agent_storage_read_scoped below for exactly
+# that grant, added alongside this one as a documented before/after.
 resource "azurerm_role_assignment" "agent_storage_readwrite" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.agent.principal_id
+}
+
+# THE "FIXED" GRANT - Storage Blob Data Reader, scoped to the ONE
+# container (agent-tool-data) the tool actually reads, nothing else.
+# This is what the identity would hold if it had been scoped
+# correctly from the start; it coexists with the over-scoped grant
+# above on purpose, as a before/after - Azure RBAC is additive, so
+# the identity's *effective* access is still the union of both until
+# the over-scoped grant is removed.
+#
+# TODO (yours to complete): comment out (or destroy)
+# agent_storage_readwrite above, re-apply, and re-run the walkthrough
+# to show the tool still works with only this scoped grant in place -
+# i.e. least privilege, demonstrated live, not just declared. Left as
+# an exercise rather than done here because removing the over-scoped
+# grant by default would remove the very over-privilege this range
+# exists to teach. Blocked on a known gap until then: storage.tf's
+# network rule doesn't yet let the Container App's own data-plane
+# blob reads through (see NOTES.md, "Known gap") - fix that first or
+# this scoped-down tool call will fail on the network layer before
+# RBAC is ever the limiting factor.
+resource "azurerm_role_assignment" "agent_storage_read_scoped" {
+  # .id, not .resource_manager_id - the latter is deprecated in azurerm 4.x
+  # (confirmed by `terraform validate`); .id is now the ARM resource ID for
+  # this resource, not the old data-plane composite ID.
+  scope                = azurerm_storage_container.tool_data.id
+  role_definition_name = "Storage Blob Data Reader"
   principal_id         = azurerm_user_assigned_identity.agent.principal_id
 }

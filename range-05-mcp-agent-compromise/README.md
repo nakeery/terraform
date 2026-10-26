@@ -301,15 +301,22 @@ thread.
 Left deliberately unfinished, same house convention as the other ranges'
 stretch goals:
 
-- **`identity.tf`** — add the *correctly*-scoped `Storage Blob Data Reader`
-  grant (on `azurerm_storage_container.tool_data` alone) alongside the
-  over-scoped one, as a documented before/after, then drop the over-scoped
-  grant and re-walk the scenario to show the tool still works at least
-  privilege. **Blocked on a known gap:** `storage.tf`'s network rule
-  firewalls to the operator's IP with only an `AzureServices` bypass, which
-  doesn't cover the Container App's own data-plane blob reads — that needs
-  fixing too before this demo can actually run (see `terraform/NOTES.md`,
-  "Known gap").
+- **`identity.tf`** — ✅ the *correctly*-scoped `Storage Blob Data Reader`
+  grant (`agent_storage_read_scoped`, on `azurerm_storage_container.tool_data`
+  alone) now exists alongside the over-scoped one, as a documented
+  before/after. What's still yours to complete: comment out (or destroy)
+  the over-scoped `agent_storage_readwrite` grant, re-apply, and re-run the
+  walkthrough to show the tool still works on the scoped grant alone —
+  true least privilege, demonstrated live. **Blocked on a known gap until
+  then:** `storage.tf`'s network rule firewalls to the operator's IP with
+  only an `AzureServices` bypass, which doesn't cover the Container App's
+  own data-plane blob reads. The real fix (a dedicated subnet + storage
+  service endpoint) is more involved than it looks — it needs the Container
+  App Environment's workload-profile-vs-consumption-only type pinned down
+  first (different subnet size *and* opposite delegation rules apply), and
+  it adds a standing public-IP + load-balancer cost this range doesn't
+  currently budget for. See `terraform/NOTES.md`, "Known gap," for exactly
+  what was checked against current docs.
 - **`storage.tf`** — flip `shared_access_key_enabled` to `false` and rework
   the seed blob upload to use RBAC instead of an access key.
 - **`ai_foundry.tf`** — create the actual Agent object + its one
