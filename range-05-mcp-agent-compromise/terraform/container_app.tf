@@ -88,6 +88,16 @@ resource "azurerm_container_app" "mcp_server" {
   }
 
   template {
+    # Pinned to exactly one replica, never scaled to zero: the ticket
+    # store, secret cache, and comment thread the attack chain depends on
+    # (mcp-server/mock_data.py) are in-memory, per-process globals. A
+    # second replica or a scale-to-zero reset would break the exfil-loop
+    # proof step (notify() writing a comment, then a later
+    # get_ticket_status() call on a DIFFERENT replica not seeing it) -
+    # this is a walkthrough-reliability fix, not a security control.
+    min_replicas = 1
+    max_replicas = 1
+
     container {
       name   = "mcp-server"
       image  = coalesce(var.mcp_server_image, "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest")

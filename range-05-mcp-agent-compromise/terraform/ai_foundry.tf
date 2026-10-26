@@ -50,9 +50,15 @@ resource "azurerm_cognitive_account" "foundry" {
   # Enables the modern Foundry "project" child resource used below.
   project_management_enabled = true
 
-  # THE OVER-SCOPED IDENTITY. This is the only identity attached to
-  # the agent's compute - see identity.tf for exactly what it can
-  # reach and why that's more than the agent's job requires.
+  # THE OVER-SCOPED IDENTITY - attached here too, but currently UNUSED:
+  # the orchestrator (orchestrator/agent_loop.py) calls this account's
+  # plain chat-completions endpoint directly, which never touches a
+  # managed identity. The identity is actually exercised at the Container
+  # App (container_app.tf) that runs the MCP server's read_secret call -
+  # see NOTES.md design decision #2. This attachment is kept only so a
+  # future native Azure AI Foundry Agent Service integration (the TODO
+  # below) has an identity already in place if/when it needs one; until
+  # then, treat it as documented-but-dead wiring, not a second live path.
   identity {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.agent.id]
@@ -93,17 +99,28 @@ resource "azurerm_cognitive_account_project" "support_agent" {
 
 # -------------------------------------------------------
 # CONTENT SAFETY / PROMPT SHIELDS
-# Custom RAI policy with Jailbreak and Indirect Attack filtering
-# enabled and set to block on the prompt side. These two categories
-# ARE Prompt Shields - the azurerm provider has no separate
-# "Content Safety account" resource for this; it's configured as a
-# content_filter on the RAI policy attached to the deployment below.
-# The provider's documentation says severity_threshold "does not
-# apply" to Jailbreak/Indirect Attack, but the azurerm 4.x schema
-# still marks the argument required on every content_filter block
-# regardless of filter type (confirmed by `terraform validate`
-# against provider 4.81.0) - set to "Low" on both as a required-but-
-# inert placeholder; it has no effect on these two categories.
+# Custom RAI policy with Jailbreak and Indirect Attack filtering - these
+# two categories ARE Prompt Shields; the azurerm provider has no separate
+# "Content Safety account" resource for this, it's a content_filter on
+# the RAI policy attached to the deployment below. The provider's
+# documentation says severity_threshold "does not apply" to Jailbreak/
+# Indirect Attack, but the azurerm 4.x schema still marks the argument
+# required on every content_filter block regardless of filter type
+# (confirmed by `terraform validate` against provider 4.81.0) - set to
+# "Low" on both as a required-but-inert placeholder; it has no effect on
+# these two categories.
+#
+# block_enabled is driven by var.enable_prompt_shields (default true) so
+# the SAME deployment can be re-applied with shields present-but-not-
+# blocking for the guardrail on/off comparison the project spec asks for,
+# without hand-editing this file between runs. The Indirect Attack filter
+# is the one that matters here: TICKET-4017's injected instruction
+# (mcp-server/mock_data.py) is a textbook indirect prompt injection, so
+# with shields on (the default) the primary chained attack may be blocked
+# before read_secret/notify ever run - that's the "on" half of the test,
+# not a bug; re-apply with -var="enable_prompt_shields=false" to see the
+# chain run unblocked, then re-apply with it back to true to see what's
+# actually caught.
 # -------------------------------------------------------
 resource "azurerm_cognitive_account_rai_policy" "prompt_shields" {
   name                 = "range05-prompt-shields"
@@ -115,7 +132,7 @@ resource "azurerm_cognitive_account_rai_policy" "prompt_shields" {
     name               = "Jailbreak"
     source             = "Prompt"
     filter_enabled     = true
-    block_enabled      = true
+    block_enabled      = var.enable_prompt_shields
     severity_threshold = "Low"
   }
 
@@ -123,7 +140,7 @@ resource "azurerm_cognitive_account_rai_policy" "prompt_shields" {
     name               = "Indirect Attack"
     source             = "Prompt"
     filter_enabled     = true
-    block_enabled      = true
+    block_enabled      = var.enable_prompt_shields
     severity_threshold = "Low"
   }
 

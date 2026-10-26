@@ -178,3 +178,24 @@ this directory.
    since none of the six MCP tools reads storage.
 5. **Model choice (`gpt-4o-mini` default).** Unchanged; revisit once the
    orchestrator's walkthrough is run against a live deployment.
+
+## Known gap: storage network ACL would block the agent's own "legitimate" tool if it's ever built
+
+Found by an `architecture-integrity-reviewer` pass, not yet fixed because
+nothing exercises it today: `storage.tf`'s `network_rules` firewalls the
+storage account to `local.allowed_source_cidrs` (the operator's IP) with
+`bypass = ["AzureServices"]`. That's the wrong caller for this resource -
+the agent's documented legitimate data source is the FAQ blob
+(`agent-tool-data/support_faq.txt`), which would be read by a tool running
+in the Container App, not by the operator, and a Container App's
+data-plane blob read is not covered by the `AzureServices` trusted-bypass
+list. The identity.tf TODO ("add the correctly-scoped `Storage Blob Data
+Reader` grant... re-run the walkthrough to show the tool still works with
+least privilege") can't actually be demonstrated until this is fixed too.
+
+This is latent, not live, because none of the six MCP tools in
+`../mcp-server/server.py` reads storage yet (see design decision #4 above)
+- the "storage pivot" is still narrative, not demonstrated. Whoever builds
+that FAQ-lookup tool should also add the Container App's egress to the
+storage network rule (or move to Private Endpoints, since egress IPs
+aren't stable) before expecting the tool to actually work.

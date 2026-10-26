@@ -39,3 +39,9 @@ variable "mcp_server_image" {
   type        = string
   default     = null
 }
+
+variable "enable_prompt_shields" {
+  description = "Whether the Jailbreak + Indirect Attack (Prompt Shields) content filters actually block. true (default) is the realistic posture for a baseline comparison; set to false with -var to stand up the SAME deployment with shields present but not blocking, for the guardrail on/off test the project spec asks for - re-apply between runs rather than editing this file. Either way the RAI policy and both filters stay attached; only block_enabled toggles, so the deployment name/identity/network config never changes between runs."
+  type        = bool
+  default     = true
+}
