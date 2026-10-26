@@ -1,15 +1,19 @@
 # Offensive Cloud & AI Range
 
-A four-part, progressively-built security range inspired [Rhino Security Labs' Cloudgoat project](https://github.com/rhinosecuritylabs/cloudgoat). It tells one deliberate story
-across four repos: **build a cloud baseline correctly → break its
+A five-part, progressively-built security range inspired [Rhino Security Labs' Cloudgoat project](https://github.com/rhinosecuritylabs/cloudgoat). It tells one deliberate story
+across five repos: **build a cloud baseline correctly → break its
 infrastructure → escalate its identity layer → attack the AI system on top of
-it.** Each project pairs a documented attack chain with named real-world
+it → attack a second AI system, on a different cloud and through a different
+trigger.** Each project pairs a documented attack chain with named real-world
 parallels (or cited research where no clean public incident fits) and a
 defensive-mitigations table, so the same reader can follow the thread from "how
-you build it right" all the way to "how it gets taken apart."
+you build it right" all the way to "how it gets taken apart - twice."
 
 Read the names top to bottom and the progression is the point: difficulty and
-blast radius climb with each range, ending on the AI/agentic scenario.
+blast radius climb with each range, and the last two both land on AI/agentic
+compromise from different angles - a poisoned knowledge base (04, AWS) and an
+over-scoped agent identity reached through the tool-calling path itself (05,
+Azure).
 
 ## The series
 
@@ -19,6 +23,7 @@ blast radius climb with each range, ending on the AI/agentic scenario.
 | 02 | [**EKS Attack Chain**](range-02-eks-attack-chain/README.md) | The same cluster deliberately broken: internet-facing unauthenticated pod, `cluster-admin` binding, over-privileged node role, no audit trail. Chain mirrors the 2018 Tesla and 2019 Capital One breaches. | Infrastructure (offensive) |
 | 03 | [**IAM Privilege Escalation Range**](range-03-iam-privilege-escalation/README.md) | Three distinct AWS IAM privesc paths from a low-privilege foothold to full account access. Documented Rhino Security Labs techniques. IAM + S3 only, near-zero cost. | Identity |
 | 04 | [**Bedrock RAG Injection Range**](range-04-bedrock-rag-injection/README.md) | Indirect prompt injection against a Bedrock AgentCore RAG assistant: a poisoned knowledge-base document hijacks an over-permissioned agent into exfiltrating data it should never reach. Mapped to MITRE ATLAS. | AI / agentic |
+| 05 | [**MCP Agent Compromise**](range-05-mcp-agent-compromise/README.md) | An over-scoped managed identity behind an Azure AI Foundry tool-calling agent, reached via tool-*output* injection (a poisoned support ticket) instead of a poisoned document - plus three standalone MCP tool-layer findings (description poisoning, confused deputy, rug pull). | AI / agentic |
 
 ## How the projects connect
 
@@ -28,9 +33,17 @@ blast radius climb with each range, ending on the AI/agentic scenario.
 - **03** moves up from infrastructure to the **identity** layer - no cluster at
   all, just IAM and S3 - showing that the account can be taken over through
   policy misconfiguration alone.
-- **04** is the flagship: an AI/agentic attack chain that reuses the same IAM
-  least-privilege lessons (an over-privileged Lambda execution role) as the
-  mechanism that turns a prompt-injection foothold into data exfiltration.
+- **04** is the first AI/agentic entry: an attack chain that reuses the same
+  IAM least-privilege lessons (an over-privileged Lambda execution role) as
+  the mechanism that turns a prompt-injection foothold into data
+  exfiltration.
+- **05** moves the AI/agentic lesson to a different cloud (Azure) and a
+  different trigger: instead of a poisoned RAG document, the injection rides
+  in through a tool's own *output* (a support ticket), and the blast radius
+  is an over-scoped managed identity sitting behind the agent's tool-calling
+  backend, not a Lambda execution role. It also adds three standalone
+  MCP tool-layer findings (description poisoning, confused deputy, rug pull)
+  that don't depend on the ticket-injection chain at all.
 
 ## Shared conventions
 
@@ -62,6 +75,7 @@ before you deploy:
 | 01 / 02 (EKS) | **Meaningful hourly cost** | EKS control plane, NAT/NLB, worker nodes bill by the hour - tear down after each session. |
 | 03 (IAM) | **Near-zero** | IAM + S3 only; IAM is free, S3 is a few cents of API calls. Safe to leave up cost-wise (its risk is credential exposure). |
 | 04 (Bedrock RAG) | **Near-zero** | Vector store is Amazon S3 Vectors - no compute and no minimum, billed only for vector storage and requests. The AgentCore harness/gateway are consumption-billed (pennies per walk, nothing at idle). Tear down is about hygiene, not a standing bill. |
+| 05 (MCP Agent) | **Low, but not literally zero** | Most of the stack is pay-per-use (Foundry model tokens, Key Vault/Storage per-operation), but the Container App hosting the MCP server is pinned to exactly one replica (never scales to zero, by design - the in-memory ticket/secret state the walkthrough depends on wouldn't survive a second replica), and the Container Registry (Basic SKU) carries a small flat fee regardless of use. Tear down between sessions rather than leaving it standing. |
 
 ## Layout
 
