@@ -69,13 +69,13 @@ locals {
   # Deliberate marker so this is unmistakable in the Azure portal - never
   # let this tag be confused with real infrastructure. Every identity,
   # vault, storage account and AI Foundry resource below is intentionally
-  # insecure. Mirrors the Purpose tag convention used by ranges 01-04,
-  # shortened per this range's own spec.
+  # insecure. Same Purpose tag convention and literal value used by
+  # ranges 02-04.
   common_tags = {
     Project     = "range-05-mcp-agent-compromise"
     Environment = "training"
     ManagedBy   = "terraform"
-    Purpose     = "INTENTIONALLY-VULNERABLE-MCP-AGENT-COMPROMISE"
+    Purpose     = "INTENTIONALLY-VULNERABLE-DO-NOT-USE-FOR-REAL-WORKLOADS"
   }
 }
 
