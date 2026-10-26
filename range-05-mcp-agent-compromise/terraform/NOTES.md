@@ -172,10 +172,19 @@ this directory.
    operator's `/32` would block the exact call this range exists to
    demonstrate. Private Endpoints/VNet integration remain a further-
    hardening `TODO` on the Foundry account.
-4. **`shared_access_key_enabled = true` on the storage account** - left as
-   a `TODO` in `storage.tf`, unchanged; the storage over-privilege is a
-   documented (not live-exercised) finding in this project's current scope,
-   since none of the six MCP tools reads storage.
+4. **`shared_access_key_enabled = true` on the storage account.** **Resolved:**
+   flipped to `false`. The provider itself now authenticates to the storage
+   data plane via Azure AD (`storage_use_azuread = true` in `main.tf`'s
+   provider block) through a new `deployer_storage_blob_contributor` RBAC
+   grant (`storage.tf`), rather than falling back to the account key - no
+   shared key exists anywhere in this stack now, matching the Key Vault's
+   RBAC-only posture. One caveat found in the provider's own docs, not
+   assumed: changing (not creating) a container's `container_access_type`
+   always falls back to Shared Key, which no longer exists here - noted
+   in `storage.tf` directly above the two container resources. The storage
+   over-privilege itself is still a documented (not live-exercised)
+   finding in this project's current scope, since none of the six MCP
+   tools reads storage.
 5. **Model choice (`gpt-4o-mini` default).** Unchanged; revisit once the
    orchestrator's walkthrough is run against a live deployment.
 

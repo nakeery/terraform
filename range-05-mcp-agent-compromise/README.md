@@ -301,6 +301,11 @@ thread.
 Left deliberately unfinished, same house convention as the other ranges'
 stretch goals:
 
+- **`storage.tf`** — ✅ `shared_access_key_enabled` is now `false`; the
+  provider authenticates to the storage data plane via Azure AD
+  (`storage_use_azuread` in `main.tf`, backed by a new deployer RBAC grant)
+  instead of an account key. No shared key exists anywhere in this stack
+  now, matching the Key Vault's posture.
 - **`identity.tf`** — ✅ the *correctly*-scoped `Storage Blob Data Reader`
   grant (`agent_storage_read_scoped`, on `azurerm_storage_container.tool_data`
   alone) now exists alongside the over-scoped one, as a documented
@@ -317,8 +322,6 @@ stretch goals:
   it adds a standing public-IP + load-balancer cost this range doesn't
   currently budget for. See `terraform/NOTES.md`, "Known gap," for exactly
   what was checked against current docs.
-- **`storage.tf`** — flip `shared_access_key_enabled` to `false` and rework
-  the seed blob upload to use RBAC instead of an access key.
 - **`ai_foundry.tf`** — create the actual Agent object + its one
   FAQ-lookup tool/function definition via the Foundry Agents SDK/REST API,
   once the Terraform side is applied.

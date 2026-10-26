@@ -53,6 +53,15 @@ provider "azurerm" {
   # blocking a clean re-apply in the same subscription. Left as an empty
   # block rather than restating the defaults.
   features {}
+
+  # Required for the provider itself to manage storage containers/blobs
+  # once storage.tf sets shared_access_key_enabled = false on the storage
+  # account - per the provider's own docs, Terraform must authenticate to
+  # the storage data plane via Azure AD instead of falling back to the
+  # account key. The deploying principal needs an RBAC data-plane role on
+  # the storage account for this to work - see
+  # azurerm_role_assignment.deployer_storage_blob_contributor in storage.tf.
+  storage_use_azuread = true
 }
 
 # Random suffix so globally-unique names (Key Vault, Storage Account,

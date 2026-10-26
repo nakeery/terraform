@@ -32,22 +32,48 @@ resource "azurerm_storage_account" "main" {
   # RBAC-only data plane - same reasoning as the Key Vault: the over-
   # scoped role assignment in identity.tf is the one grant that explains
   # the agent's reach into this account, with no shared key floating
-  # around to muddy the attack chain.
-  shared_access_key_enabled = true # TODO (yours to complete): flip to false and rework the seed upload below to use an RBAC-authenticated azurerm_storage_blob instead of an access key, then re-verify plan/apply.
+  # around to muddy the attack chain. Requires provider.storage_use_azuread
+  # (main.tf) and a data-plane RBAC grant for the deploying principal
+  # (deployer_storage_blob_contributor below) so Terraform itself can still
+  # create the seed containers/blobs without a key.
+  shared_access_key_enabled = false
 
   tags = local.common_tags
 }
 
+# The Terraform principal applying this stack needs data-plane write
+# access to create the seed containers/blobs below, now that the account
+# has no access key - same propagation-lag reasoning as
+# deployer_secrets_officer in keyvault.tf. Scoped to this account only,
+# distinct from the agent's own (over- and correctly-scoped) grants in
+# identity.tf.
+resource "azurerm_role_assignment" "deployer_storage_blob_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# NOTE (checked against the provider's own docs, not assumed): the
+# azurerm_storage_container docs state that *changing* container_access_type
+# on an existing container always falls back to Shared Key, which this
+# account no longer has. container_access_type = "private" is this
+# resource's own default, so initial creation shouldn't trigger that code
+# path - but if you ever need to change it on a container that already
+# exists, temporarily set shared_access_key_enabled back to true first.
 resource "azurerm_storage_container" "tool_data" {
   name                  = "agent-tool-data"
   storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
+
+  depends_on = [azurerm_role_assignment.deployer_storage_blob_contributor]
 }
 
 resource "azurerm_storage_container" "sensitive_data" {
   name                  = "sensitive-customer-records"
   storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
+
+  depends_on = [azurerm_role_assignment.deployer_storage_blob_contributor]
 }
 
 # -------------------------------------------------------
