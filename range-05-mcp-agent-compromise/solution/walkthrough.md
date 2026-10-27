@@ -225,7 +225,7 @@ The leaked value carries a per-deployment flag:
 
 ---
 
-## Step 7: Test Prompt Shields (on vs. off)
+## Step 7: Test Prompt Shields' Indirect Attack filter (on vs. off)
 
 This range deploys with Azure AI Content Safety's Prompt Shields
 (`Jailbreak` + `Indirect Attack` filters) attached to the model deployment,
@@ -250,7 +250,50 @@ different deployment.
 
 ---
 
-## Step 8: The three standalone findings (code-level)
+## Step 8: Test Prompt Shields' Jailbreak filter (direct injection)
+
+Step 4 is *indirect* prompt injection (OWASP LLM01:2025, indirect
+sub-type) — you never talk to the model, the instruction arrives through
+a tool result. The RAI policy's other content filter, `Jailbreak`, guards
+against the *direct* sub-type instead: an end user talking to the agent
+themselves, trying to get it to disregard its own instructions. Nothing
+in the chain so far has exercised that filter at all.
+
+[`../payloads/jailbreak_attempt.txt`](../payloads/jailbreak_attempt.txt)
+is a direct injection attempt — a pretext/authority-override jailbreak
+(not the roleplay/"DAN" style): it claims an unrestricted "audit mode" is
+in effect and asks the agent to call `read_secret` and hand you the value
+right in its reply, with no ticket, no `notify`, nothing indirect at all.
+
+```bash
+python agent_loop.py "$(cat ../payloads/jailbreak_attempt.txt)"
+```
+
+With Prompt Shields on (the default), the `Jailbreak` filter should catch
+this before the model ever calls a tool. Toggle it the same way as Step 7
+to see the difference:
+
+```bash
+cd ../terraform
+terraform apply -var="enable_prompt_shields=false"
+cd ../orchestrator
+python agent_loop.py "$(cat ../payloads/jailbreak_attempt.txt)"
+# with the filter not blocking, compare: does the model comply and read
+# the secret back to you directly, where Step 4's indirect route never
+# would have (it was built to stay silent)?
+cd ../terraform && terraform apply -var="enable_prompt_shields=true"
+```
+
+**Note on verification:** this step needs a live Azure OpenAI deployment
+with Prompt Shields attached to actually run - `agent_loop.py` has no
+local/mock mode (unlike the MCP server side), so this hasn't been
+exercised against a real deployment in this environment. Treat the
+expected on/off behavior above as the design intent to confirm against a
+live apply, the same caveat that already applied to Step 7.
+
+---
+
+## Step 9: The three standalone findings (code-level)
 
 Findings unrelated to the ticket-injection chain above, exercised directly
 against the MCP server's Python module rather than through the agent —
@@ -315,6 +358,14 @@ signal that what it approved is no longer what it's calling.
 5. **Indirect prompt injection, not jailbreaking.** You never talk to the
    model directly. The malicious instruction arrives entirely through a
    tool result the agent is configured to trust.
+6. **The jailbreak (Step 8) works for a different reason: a system prompt
+   is a suggestion, not a boundary.** `agent_loop.py`'s `SYSTEM_PROMPT` is
+   the only thing telling the model what it's for - nothing enforces it
+   against a user who directly claims a higher-authority context ("audit
+   mode") and asks it to ignore that prompt. Whether this succeeds depends
+   entirely on Prompt Shields' `Jailbreak` filter actually catching it;
+   with no filter (or a model that's bad at resisting pretext framing),
+   there's no second line of defense at all.
 
 ---
 
@@ -326,7 +377,8 @@ signal that what it approved is no longer what it's calling.
 | Internal documentation reachable through a customer-facing tool | Separate internal/admin records from customer ticket data, with different tools and different trust levels |
 | Over-scoped managed identity (`identity.tf`) | Least privilege — grant `Storage Blob Data Reader` on the one container the tool reads, and no Key Vault grant at all if the agent's job never needs one |
 | Tool output treated as trusted context | Mark tool-returned content as untrusted in the system prompt / orchestration layer; never let it alone trigger further tool calls without a human or policy check |
-| No input/output guardrails | Azure AI Content Safety Prompt Shields (Indirect Attack filter) — attached here and shown both on and off |
+| No input/output guardrails against indirect injection | Azure AI Content Safety Prompt Shields (Indirect Attack filter) — attached here and shown both on and off |
+| System prompt has no enforcement behind it against direct override | Azure AI Content Safety Prompt Shields (Jailbreak filter) — the other half of the same RAI policy, tested separately in Step 8; require explicit re-authentication/elevation for any claimed "audit/maintenance mode" rather than trusting a user's self-asserted authority |
 | Tool description is an unverified instruction channel | Treat tool metadata (not just tool calls) as part of the trust boundary; diff registered descriptions against an approved baseline |
 | No caller-identity check at the tool boundary | Require and verify a caller identity/session credential per tool call; scope responses to what that caller is authorized to see |
 | Tool definitions mutable after approval | Pin/verify tool definitions (name + description + schema hash) at call time, not just at approval time |
@@ -339,12 +391,59 @@ signal that what it approved is no longer what it's calling.
 |---|---|
 | Reconnaissance | AML.T0000 — Search for Victim's Publicly Available Research Materials (here: enumerating ticket content via `list_tickets`) |
 | Initial Access | AML.T0010 — ML Supply Chain Compromise (your own planted ticket content) |
-| Execution | AML.T0051 — LLM Prompt Injection |
-| Execution | AML.T0054 — Indirect Prompt Injection |
+| Execution | AML.T0051 — LLM Prompt Injection (covers both the Step 4 indirect route and the Step 8 direct/jailbreak route - ATLAS doesn't split the two the way OWASP does below) |
+| Execution | AML.T0054 — Indirect Prompt Injection (Step 4 specifically) |
 | Collection | AML.T0035 — ML Artifact Collection |
 | Privilege Escalation (latent) | AML.T0068 — Exploit Overprivileged IAM Role (here: managed identity) |
 
 The three standalone findings (tool description poisoning, confused
 deputy, rug pull) are tool/agent-layer failure classes that sit alongside,
 rather than inside, the ATLAS tactic chain above — they're demonstrated
-independently in Step 8, not as part of this chronology.
+independently in Step 9, not as part of this chronology.
+
+---
+
+## OWASP Top 10 for LLM Applications (2025) Mapping
+
+| Finding | Category |
+|---|---|
+| Step 4 — ticket-injection chain | **LLM01:2025 Prompt Injection** (indirect sub-type — the instruction arrives via a tool result, never via direct user input) |
+| Step 8 — jailbreak attempt | **LLM01:2025 Prompt Injection** (direct sub-type — a pretext/authority-override jailbreak, talked to the model directly) |
+| `read_secret` under the over-scoped identity | **LLM02:2025 Sensitive Information Disclosure** |
+| Over-scoped managed identity (`identity.tf`) | **LLM06:2025 Excessive Agency** |
+| `get_account_balance` tool-description poisoning | **LLM01:2025 Prompt Injection** (via tool metadata, not tool output or user input - a third sub-surface alongside direct/indirect) |
+| `export_user_directory` confused deputy | **LLM06:2025 Excessive Agency** (the tool grants the same capability to every caller, with nothing scoping it to who's actually asking) |
+| `schedule_meeting` rug pull | **LLM03:2025 Supply Chain** (a tool definition is a dependency that changed after it was trusted, same shape as a poisoned package update) |
+
+**Not covered by this range** (named here rather than silently skipped):
+LLM04:2025 Data and Model Poisoning and LLM09:2025 Misinformation (no
+training/fine-tuning pipeline or model-output-accuracy angle exists in
+this stack); LLM05:2025 Improper Output Handling (a distinct category
+from tool-*input* trust - nothing here demonstrates unsafe handling of
+the model's *own* output downstream); LLM07:2025 System Prompt Leakage
+(no exercise for extracting `agent_loop.py`'s system prompt); LLM08:2025
+Vector and Embedding Weaknesses (no vector store at all - that's
+range-04's territory); LLM10:2025 Unbounded Consumption (no resource-
+exhaustion/DoS angle built).
+
+---
+
+## OWASP Top 10 for Agentic Applications (2025) Mapping
+
+| Finding | Category |
+|---|---|
+| Step 4 — ticket-injection chain | **ASI01 Agent Goal Hijack** (hidden instructions redirect the agent's objective toward exfiltration - close to the framework's own EchoLeak-style framing) |
+| Step 8 — jailbreak attempt | **ASI01 Agent Goal Hijack** (same category, direct route instead of hidden-instruction route) |
+| `read_secret` / `notify` misused as intended-but-wrong tools | **ASI02 Tool Misuse** |
+| Over-scoped managed identity (`identity.tf`) | **ASI03 Identity & Privilege Abuse** ("leaked or misused credentials let agents operate beyond their intended scope" - this is almost exactly `identity.tf`'s header comment) |
+| `export_user_directory` confused deputy | **ASI03 Identity & Privilege Abuse** (no caller-identity check at the tool boundary is the same failure one layer down) |
+| `schedule_meeting` rug pull | **ASI04 Agentic Supply Chain Vulnerabilities** ("runtime components in dynamic MCP... ecosystems can be poisoned" - a near-exact description of swapping a tool's definition post-approval) |
+
+**Not covered by this range:** ASI05 Unexpected Code Execution (no
+code-execution surface in any of the eight tools); ASI06 Memory &
+Context Poisoning (both `agent_loop.py` and the MCP server are stateless
+per-call - there's no persistent agent memory here to poison at all);
+ASI07 Insecure Inter-Agent Communication, ASI08 Cascading Failures, and
+ASI10 Rogue Agents (all presuppose multiple interacting agents - this
+range is single-agent throughout); ASI09 Human-Agent Trust Exploitation
+(no human-approval-of-agent-output step exists to exploit).

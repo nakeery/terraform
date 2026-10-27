@@ -29,7 +29,8 @@ see [What's left](#whats-left-todo-yours-to-complete) below.
 **Difficulty**: Medium
 **Category**: AI / ML Security (agent & tool layer)
 **Services**: Azure AI Foundry (Cognitive Services account + project), Azure OpenAI (tool/function-calling model deployment), Azure AI Content Safety (Prompt Shields), Azure Container Apps, Azure Container Registry, Azure Key Vault, Azure Storage, Managed Identity, Log Analytics
-**Vulnerability classes**: Indirect Prompt Injection (tool-output), Overprivileged Managed Identity / Excessive Agency, Tool Description Poisoning, Confused Deputy, Rug Pull (tool definition mutation)
+**Vulnerability classes**: Prompt Injection - indirect (tool-output) and direct (jailbreak), Overprivileged Managed Identity / Excessive Agency, Tool Description Poisoning, Confused Deputy, Rug Pull (tool definition mutation)
+**Framework mappings**: MITRE ATLAS, OWASP Top 10 for LLM Applications (2025), OWASP Top 10 for Agentic Applications (2025) — see [`solution/walkthrough.md`](solution/walkthrough.md#mitre-atlas-mapping)
 
 ---
 
@@ -131,6 +132,9 @@ the ticket the secret gets posted back to.
   endpoint and the real MCP server — see [Why no Agent Service](#why-this-skips-the-managed-agent-service) below.
   A second script, `../orchestrator/mcp_client.py`, is a raw MCP client
   with no LLM involved, for the discovery steps that don't need one.
+- A **`payloads/`** directory holding [`jailbreak_attempt.txt`](payloads/jailbreak_attempt.txt),
+  a direct-injection prompt for testing the RAI policy's `Jailbreak`
+  filter separately from the ticket-based indirect chain.
 
 No document store, no vector index, no RAG pipeline anywhere in this stack —
 that's range-04's trigger, not this one.
@@ -189,6 +193,13 @@ the trigger is the agent's tool-calling path itself.
    walkthrough runs the chain with it on (the realistic default) and off
    (`-var="enable_prompt_shields=false"`) so you can see what it actually
    catches.
+5. **Direct injection / jailbreak, as a separate test of the RAI policy's
+   *other* filter** — [`payloads/jailbreak_attempt.txt`](payloads/jailbreak_attempt.txt)
+   talks to the agent directly (no ticket, no discovery arc) with a
+   pretext/authority-override jailbreak, asking it to call `read_secret`
+   and hand the value back in its own reply. This exercises the
+   `Jailbreak` content filter, which nothing in steps 0–4 ever touches —
+   see `solution/walkthrough.md` Step 8.
 
 ### Three standalone findings (not part of the chained attack)
 
@@ -196,16 +207,16 @@ These demonstrate distinct tool-layer vulnerability classes on their own,
 independent of the ticket-injection chain above — see
 [`../mcp-server/HANDOFF.md`](mcp-server/HANDOFF.md) for how each is wired:
 
-5. **`get_account_balance` — tool description poisoning.** The tool's
+6. **`get_account_balance` — tool description poisoning.** The tool's
    *registered description* (not its implementation) carries a hidden
    `<!-- SYSTEM: ... -->` instruction block — the kind of text most MCP
    clients render straight into the model's context, unflagged, before the
    tool is ever called.
-6. **`export_user_directory` — confused deputy.** Returns the full internal
+7. **`export_user_directory` — confused deputy.** Returns the full internal
    user directory with no caller-identity or authorization check at all.
    Calling it is indistinguishable from calling any other tool on the
    server.
-7. **`schedule_meeting` / `perform_rug_pull()` — rug pull.** A tool's
+8. **`schedule_meeting` / `perform_rug_pull()` — rug pull.** A tool's
    description (and, in a real deployment, its behavior) can be swapped out
    *after* it's been reviewed/approved, without its name or signature
    changing — the SDK's own `remove_tool()` / `add_tool()` make this one
@@ -411,6 +422,14 @@ yourself first.
    made earlier (rug pull).
 6. What Azure AI Content Safety's Prompt Shields (the Indirect Attack
    filter) does and doesn't catch, with the on/off comparison built in.
+7. The difference between *direct* prompt injection (a jailbreak aimed
+   straight at the model) and *indirect* (steps 0–4) — and what the
+   `Jailbreak` filter catches that `Indirect Attack` doesn't, and vice
+   versa.
+8. How these findings map onto MITRE ATLAS, the OWASP Top 10 for LLM
+   Applications (2025), and the OWASP Top 10 for Agentic Applications
+   (2025) — see `solution/walkthrough.md` for all three tables, including
+   what's deliberately *not* covered by this range under each framework.
 
 ## Defensive Notes
 
