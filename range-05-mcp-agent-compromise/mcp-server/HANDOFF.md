@@ -1,10 +1,19 @@
 # Handoff notes - range-05 MCP server scaffolding
 
+**Note (discovery-phase update, see bottom of this doc):** this file was
+written during initial scaffolding, when tools 1-3 below were still
+stubs and TICKET-4017 was the only way into the chain. Both are now
+resolved - see "Design decisions (resolved - Phase 3)" and "Update:
+discovery phase" below for current state. Kept as-written above that
+point as the historical record, per this project's documentation
+convention.
+
 This directory is scaffolding for the six MCP tool-layer vulnerability
-classes described in the range-05 spec. Tools 1-3 are deliberately
-incomplete stubs; tools 4-6 are complete, standalone findings. This doc is
-what the next phase (driven by the project owner) needs to pick the work
-back up.
+classes described in the range-05 spec, plus (added later) two
+reconnaissance/payload-delivery tools that aren't vulnerability classes
+of their own. Tools 1-3 are deliberately incomplete stubs; tools 4-6 are
+complete, standalone findings. This doc is what the next phase (driven by
+the project owner) needs to pick the work back up.
 
 ## Files
 
@@ -94,3 +103,45 @@ real destination, per the hard constraints for this phase.
   as the Phase 1 verification did) - the primary chained attack through
   `../orchestrator/agent_loop.py` is the one finding driven end-to-end
   against a real model.
+
+## Update: discovery phase
+
+TICKET-4017 being handed to you directly (by this doc, by the README) made
+the chain a tour rather than a lab - there was nothing to actually find.
+Added two tools, neither a new vulnerability class on its own, that make
+ATTACK CHAIN STEP 1 discoverable and plantable instead:
+
+- **`list_tickets() -> list[dict]`** - enumerates every ticket (id, status,
+  subject only, no bodies), backed by `mock_data.list_mock_tickets()`. The
+  "`aws s3 ls`" of this range.
+- **`submit_ticket(subject: str, body: str) -> dict`** - files a new
+  ticket with caller-chosen content, backed by
+  `mock_data.submit_mock_ticket()`. The "`aws s3 cp`" that lets you plant
+  your own payload once you know what to put in it.
+
+The thing worth knowing *how* to plant lives in a new seeded ticket,
+`mock_data._MOCK_TICKETS["TICKET-0999"]`: purely descriptive text (no
+imperative "SYSTEM:" instruction of its own - it shouldn't act as a second
+live injection) documenting that tickets escalated to Finance/Security get
+an "auto-appended internal note" the assistant is configured to treat as
+authoritative. `list_tickets` surfaces it (subject:
+`[Internal] Escalation & compliance-note auto-append policy`);
+`get_ticket_status` reads it. TICKET-4017 stays in place as a ready-made,
+pre-planted example/fast-path for a quick smoke test, but the intended path
+is now: `list_tickets` -> read TICKET-0999 -> `submit_ticket` with your own
+note in that format -> ask the agent about your own ticket.
+
+Also added: a per-deployment flag embedded in the real Key Vault secret's
+value (`range-05-flag-<suffix>`, see `../terraform/keyvault.tf`), with a
+fixed `range-05-flag-LOCALDEV` placeholder in the mock secret store for
+local dev without Azure - gives this range the same checkable "you got it"
+signal every other range in the series has.
+
+Verified end to end over the real `streamable-http` transport (not just
+direct function calls): started the server locally
+(`MCP_TRANSPORT=streamable-http`), then used a new raw MCP client
+(`../orchestrator/mcp_client.py`, no LLM involved) to `list_tickets`, read
+TICKET-0999, `submit_ticket` a self-crafted note modeled on it, confirm it
+stored correctly, then run it through `read_secret` / `notify` and read the
+leak back via a second `get_ticket_status` call - the same sequence a human
+would do by hand, minus the LLM deciding to do it on its own.

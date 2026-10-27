@@ -44,34 +44,50 @@ touches Key Vault.
 The agent's backing identity doesn't match that job:
 
 ```
-[Attacker/support user]
+[You - no elevated access of your own]
     |
-    | (1) Files or edits a ticket (TICKET-4017) containing a hidden
-    |     "SYSTEM" instruction in its body
+    | (0a) list_tickets() - enumerate what's there, no LLM involved
     v
-[Mock ticket store]  <-- attacker-reachable, mutable field
-    |
-    | (2) Agent calls get_ticket_status("TICKET-4017") to help the user
+[Mock ticket store]  <-- one ticket's subject reads like internal
+    |                     documentation that doesn't belong in a
+    |                     customer queue (TICKET-0999)
+    | (0b) get_ticket_status("TICKET-0999") - read it directly
+    v
+[A convention, not an attack]  <-- describes an "auto-appended
+    |                                internal note" the assistant is
+    |                                configured to treat as authoritative
+    | (0c) submit_ticket(subject, body) - plant your OWN ticket using
+    |      that exact convention, no validation on the content
+    v
+[Your planted ticket]  <-- attacker-reachable, mutable field, now
+    |                       indistinguishable from a "real" auto-noted one
+    | (1) Agent calls get_ticket_status(your_ticket_id) to help you
     v
 [MCP server tool output]  <-- agent treats this as trusted context,
     |                          nothing distinguishes "ticket text" from
     |                          "instructions"
-    | (3) Injected instruction tells the agent to read a secret, silently
+    | (2) Injected instruction tells the agent to read a secret, silently
     v
 [read_secret("internal-billing-db-connection-string")]
     |
-    | (4) Real Azure Key Vault call, under the over-scoped managed identity
+    | (3) Real Azure Key Vault call, under the over-scoped managed identity
     v
 [Key Vault]  <-- the agent's job never needed ANY Key Vault access
     |
-    | (5) Injected instruction tells the agent to exfiltrate via notify()
+    | (4) Injected instruction tells the agent to exfiltrate via notify()
     v
-[notify(channel="TICKET-4017", message=<secret value>)]
+[notify(channel=your_ticket_id, message=<secret value>)]
     |
-    | (6) Posted back as a comment on the SAME ticket the injection came from
+    | (5) Posted back as a comment on the SAME ticket you planted
     v
-[Attacker re-reads TICKET-4017 -> secret value sitting in the comment thread]
+[You re-read your ticket -> secret value (and a flag) sitting in the thread]
 ```
+
+Steps (0a)–(0c) are the discovery arc — nobody hands you a ticket ID. A
+pre-seeded, ready-made example (`TICKET-4017`) still exists as a fast-path
+if you just want to confirm the Key Vault wiring works; the walkthrough
+builds the attack from scratch instead. See
+[`solution/walkthrough.md`](solution/walkthrough.md).
 
 No separate exfil infrastructure is needed: the attacker already controls
 the ticket the secret gets posted back to.
@@ -89,7 +105,8 @@ the ticket the secret gets posted back to.
   `var.enable_prompt_shields`.
 - A **Key Vault** (`keyvault.tf`) holding one dummy secret
   (`internal-billing-db-connection-string`) the agent has no legitimate
-  reason to ever read.
+  reason to ever read — its value carries a per-deployment flag
+  (`range-05-flag-<suffix>`) as the checkable "you got it" signal.
 - A **storage account** (`storage.tf`) with two containers: `agent-tool-data`
   (the FAQ blob the agent's tool is actually supposed to read) and
   `sensitive-customer-records` (a fake customer export the over-scoped
@@ -104,12 +121,16 @@ the ticket the secret gets posted back to.
   applied to Key Vault, since the only caller that matters there is the
   Container App's own outbound traffic, not the operator (see the comment in
   `keyvault.tf`).
-- An **MCP server** (`../mcp-server/server.py`) exposing six tools: the
-  three that make up the primary chained attack, plus three standalone
-  tool-layer findings (below).
+- An **MCP server** (`../mcp-server/server.py`) exposing eight tools: two
+  reconnaissance/payload-delivery primitives (`list_tickets`,
+  `submit_ticket` — the discovery arc below), three that make up the
+  primary chained attack, and three standalone tool-layer findings
+  (below).
 - An **orchestrator** (`../orchestrator/agent_loop.py`) that drives the
   tool-calling loop directly against the Foundry account's chat-completions
   endpoint and the real MCP server — see [Why no Agent Service](#why-this-skips-the-managed-agent-service) below.
+  A second script, `../orchestrator/mcp_client.py`, is a raw MCP client
+  with no LLM involved, for the discovery steps that don't need one.
 
 No document store, no vector index, no RAG pipeline anywhere in this stack —
 that's range-04's trigger, not this one.
@@ -142,10 +163,21 @@ the trigger is the agent's tool-calling path itself.
 
 ## The attack chain
 
+0. **Discovery (`list_tickets`, `submit_ticket`)** — not a vulnerability
+   class on their own, but what makes step 1 below something you *find*
+   instead of something you're handed. `list_tickets` enumerates every
+   ticket (id/status/subject only); one subject reads like internal
+   documentation that doesn't belong in a customer queue. Reading it
+   (`get_ticket_status`) reveals a convention — tickets escalated to
+   Finance/Security get an "auto-appended internal note" the assistant
+   treats as authoritative — with no live attack in the text itself.
+   `submit_ticket` then lets you plant your own ticket using that exact
+   convention; nothing validates what you put in it.
 1. **Tool-output injection (`get_ticket_status`)** — the agent treats a
    tool's returned text as trusted context, even though that text originates
    from a mutable, attacker-reachable source (a ticket anyone can file or
-   edit). Nothing distinguishes "ticket text" from "instructions."
+   edit — including you, per step 0). Nothing distinguishes "ticket text"
+   from "instructions."
 2. **Over-privileged tool (`read_secret`)** — the tool's *backing identity*,
    not the MCP protocol, is the least-privilege failure: it can resolve
    every secret in the vault, not one scoped to a real need.
@@ -208,22 +240,24 @@ Unlike ranges 01–04, this range has no separate low-privilege attacker
 credential to hand you — the vulnerability under test is the identity behind
 the agent's tool backend, not caller authentication to the agent (that gap
 *is* its own standalone finding — see `export_user_directory` above). You act
-as:
-
-- whoever can file or edit a support ticket (in this scaffold, the injected
-  ticket `TICKET-4017` is pre-seeded in `mock_data.py` — standing in for a
-  ticket an attacker already filed, since no ticket-creation tool is
-  exposed here), and
-- the operator running `orchestrator/agent_loop.py`, which authenticates
-  with your own Azure CLI login — you are never handed Key Vault or Storage
-  access directly.
+as a low-privilege support requester: you can list tickets, read them, file
+new ones (`list_tickets`/`get_ticket_status`/`submit_ticket`, callable
+directly via `orchestrator/mcp_client.py`, no LLM needed), and ask the
+support assistant questions (`orchestrator/agent_loop.py`, authenticated
+with your own Azure CLI login) — you are never handed Key Vault or Storage
+access directly, and nobody hands you a working ticket ID either.
 
 ## Your Goal
 
 Get the real Key Vault secret value (`internal-billing-db-connection-string`)
-to show up as a comment on `TICKET-4017` — driven entirely by the agent
-following the injected instruction when you ask it about that ticket, never
-by calling `read_secret` or Key Vault yourself.
+to show up as a comment on a ticket — driven entirely by the agent following
+an injected instruction when you ask it about that ticket, never by calling
+`read_secret` or Key Vault yourself. You have to find the convention that
+makes a ticket "trusted" and plant your own; a ready-made example
+(`TICKET-4017`) exists as a fast-path if you just want to confirm the Key
+Vault wiring works first. See
+[`solution/walkthrough.md`](solution/walkthrough.md) for the intended
+discovery path.
 
 ---
 
@@ -362,6 +396,9 @@ yourself first.
 
 ## What this scenario demonstrates
 
+0. How to enumerate an MCP-backed system directly (no LLM) to find what's
+   worth exploiting, then use what you learn to craft and plant your own
+   working payload — rather than being handed one.
 1. Why tool *output*, not just tool *input*, is an untrusted-data boundary —
    indirect prompt injection doesn't need a document store to arrive through.
 2. How an over-scoped identity behind a narrow-looking tool turns one
@@ -386,7 +423,8 @@ The root causes that make this scenario possible:
    agent (and the system prompt it's given) trusts ticket text as context,
    not as untrusted, attacker-reachable input.
 3. **No provenance or content validation on tool results** — nothing
-   inspects what a tool returns before it re-enters the model's context.
+   inspects what a tool returns before it re-enters the model's context,
+   and `submit_ticket` itself validates nothing about what you file.
 4. **(Standalone) No authorization check at the tool-call boundary** — the
    MCP server trusts every caller equally (`export_user_directory`).
 5. **(Standalone) Tool metadata is mutable and unverified** — both the

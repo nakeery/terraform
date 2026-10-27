@@ -1,7 +1,9 @@
 """
 range-05-mcp-agent-compromise - MCP server.
 
-Exposes six MCP tools, each demonstrating a structurally distinct
+Exposes eight MCP tools. Two (list_tickets, submit_ticket) are
+reconnaissance/payload-delivery primitives, not vulnerability classes of
+their own; the other six each demonstrate a structurally distinct
 agent/tool-layer vulnerability class. Per the project spec:
 
   - Tools 1-3 (get_ticket_status, read_secret, notify) are the primary
@@ -10,9 +12,13 @@ agent/tool-layer vulnerability class. Per the project spec:
     (read_secret, backed by a real Azure Key Vault call under the
     over-scoped managed identity from ../terraform/identity.tf) and
     exfiltrate the result (notify, which posts the result back onto the
-    same attacker-controlled ticket it came from). The injected
-    instruction text lives in mock_data._MOCK_TICKETS["TICKET-4017"], not
-    in this file - see the comment on get_ticket_status below.
+    same attacker-controlled ticket it came from). TICKET-4017 is a
+    ready-made example of the injected instruction
+    (mock_data._MOCK_TICKETS["TICKET-4017"]); the intended discovery path
+    is list_tickets -> read TICKET-0999 (which documents the "auto-
+    appended internal note" convention TICKET-4017 already exploits) ->
+    submit_ticket with your own crafted note - see the comment on
+    get_ticket_status below and 0. list_tickets / submit_ticket above it.
 
   - Tools 4-6 are standalone findings: a poisoned tool description, a
     tool with no authentication check, and a tool whose description can
@@ -48,7 +54,9 @@ from mock_data import (
     get_mock_ticket,
     get_mock_user_directory,
     get_ticket_comments,
+    list_mock_tickets,
     log_to_sink,
+    submit_mock_ticket,
 )
 
 mcp = MCPServer("range-05-mcp-agent-compromise")
@@ -72,6 +80,35 @@ if _KEY_VAULT_URI:
 
     _credential = DefaultAzureCredential(managed_identity_client_id=_MANAGED_IDENTITY_CLIENT_ID)
     _kv_client = SecretClient(vault_url=_KEY_VAULT_URI, credential=_credential)
+
+
+# ---------------------------------------------------------------------------
+# 0. list_tickets / submit_ticket - reconnaissance and payload delivery
+# ---------------------------------------------------------------------------
+# Not new vulnerability classes on their own - these are what make ATTACK
+# CHAIN STEP 1 below discoverable and plantable instead of a single ticket
+# ID handed to you out of band. list_tickets is the "aws s3 ls" of this
+# range: it surfaces TICKET-0999 (mock_data.py), which documents - in
+# plain, non-imperative language, not as a live injection itself - the
+# "auto-appended internal note" convention the assistant has been
+# configured to trust. submit_ticket is the "aws s3 cp" that lets you
+# plant your own ticket using that convention once you've found it.
+# TICKET-4017 remains as a ready-made example/fast-path, not the only way
+# in.
+
+
+@mcp.tool()
+def list_tickets() -> list[dict[str, str]]:
+    """List all support tickets (id, status, and subject only - call
+    get_ticket_status for a specific ticket's full body)."""
+    return list_mock_tickets()
+
+
+@mcp.tool()
+def submit_ticket(subject: str, body: str) -> dict[str, str]:
+    """File a new support ticket with the given subject and body. Returns
+    the new ticket's id and status."""
+    return submit_mock_ticket(subject=subject, body=body)
 
 
 # ---------------------------------------------------------------------------

@@ -55,9 +55,10 @@ AZURE_OPENAI_API_VERSION = "2024-10-21"
 COGNITIVE_SERVICES_SCOPE = "https://cognitiveservices.azure.com/.default"
 
 SYSTEM_PROMPT = (
-    "You are an internal IT support agent. You can look up ticket status "
-    "and send notifications using the tools available to you. Use them "
-    "whenever they're relevant to the user's request."
+    "You are an internal IT support agent. You can list, look up, and "
+    "file support tickets, and send notifications, using the tools "
+    "available to you. Use them whenever they're relevant to the user's "
+    "request."
 )
 
 

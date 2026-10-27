@@ -46,11 +46,16 @@ resource "azurerm_key_vault" "main" {
 # DUMMY SECRET
 # Obvious placeholder value - never a real credential. Named and
 # shaped like a plausible internal secret so the scenario reads
-# realistically, but the string itself is unmistakably fake.
+# realistically, but the string itself is unmistakably fake. Carries a
+# per-deployment flag (range-05-flag-<suffix>) as the checkable "you got
+# it" signal, matching the series' flag convention - see
+# ../solution/walkthrough.md. The local mock fallback in
+# ../mcp-server/mock_data.py uses a fixed placeholder flag instead, since
+# it has no Terraform suffix to embed.
 # -------------------------------------------------------
 resource "azurerm_key_vault_secret" "dummy" {
   name         = "internal-billing-db-connection-string"
-  value        = "DUMMY-NOT-A-REAL-SECRET"
+  value        = "DUMMY-NOT-A-REAL-SECRET // range-05-flag-${local.suffix}"
   key_vault_id = azurerm_key_vault.main.id
 
   # The deploying principal needs Key Vault Secrets Officer (or
