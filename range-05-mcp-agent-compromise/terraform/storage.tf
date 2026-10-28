@@ -25,7 +25,7 @@ resource "azurerm_storage_account" "main" {
 
   network_rules {
     default_action = "Deny"
-    ip_rules       = local.allowed_source_cidrs
+    ip_rules       = local.firewall_ip_rules
     bypass         = ["AzureServices"]
   }
 

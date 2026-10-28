@@ -147,6 +147,33 @@ No fabricated plan output is included here. To actually see a plan, configure
 `ARM_TENANT_ID`) against a sandbox subscription and re-run `terraform plan` in
 this directory.
 
+## Real finding from a live `apply`: Storage/Cognitive Services firewalls reject `/32`
+
+With real credentials configured (outside this environment), the first live
+`apply` got past authentication and failed on `azurerm_storage_account.main`:
+
+```
+Error: "network_rules.0.ip_rules.0" must start with IPV4 address and/or slash,
+number of bits (0-30) as prefix. Example: 23.45.1.0/30 but got
+"71.207.149.181/32"
+```
+
+Azure's Storage (and, on inspection, Cognitive Services) firewall `ip_rules`
+schema only accepts a bare IPv4 address or a CIDR with a 0-30 prefix - /31 and
+/32 are rejected outright, so a single host has to be passed with no prefix at
+all rather than as a /32. This is the same constraint on both resources
+(confirmed via third-party docs/policy-tooling references for Cognitive
+Services, since Microsoft's own schema docs don't spell out the 0-30 bound
+explicitly), but notably **`terraform validate` does not catch it** - it only
+surfaces once the provider evaluates a concrete IP value against the live
+API during `plan`/`apply`. `access.tf` now derives `local.firewall_ip_rules`
+(a `trimsuffix(cidr, "/32")` over `local.allowed_source_cidrs`) for exactly
+this reason, used by `storage.tf` and `ai_foundry.tf`'s `ip_rules`.
+`container_app.tf`'s ingress `ip_security_restriction` is a different API
+(`Microsoft.App`, not `Microsoft.Storage`/`CognitiveServices`) and accepts
+`/32` fine, so it keeps using `local.allowed_source_cidrs` directly - not
+changed, and not verified further since nothing reported it broken.
+
 ## Design decisions that needed the project owner's sign-off (resolved)
 
 1. **The Agent object + tool manifest is not in Terraform at all.**

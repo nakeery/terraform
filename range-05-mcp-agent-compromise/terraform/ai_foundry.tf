@@ -77,7 +77,7 @@ resource "azurerm_cognitive_account" "foundry" {
 
   network_acls {
     default_action = "Deny"
-    ip_rules       = local.allowed_source_cidrs
+    ip_rules       = local.firewall_ip_rules
   }
 
   tags = local.common_tags
