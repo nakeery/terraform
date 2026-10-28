@@ -1,6 +1,6 @@
 ---
 name: architecture-integrity-reviewer
-description: Audits cross-file consistency across one range's Terraform, server/application code, and orchestration code in this portfolio series — catches gaps like a missing role assignment a live call path depends on, a network restriction that would block a call the design needs, a name that drifted between an output/env var and the code consuming it, or an attack-chain step that doesn't actually resolve end to end. Read-only: reports findings, never fixes them. Use after scaffolding/wiring is done and before (or instead of) a live apply, to catch issues cheaply.
+description: "Audits cross-file consistency across one range's Terraform, server/application code, and orchestration code in this portfolio series — catches gaps like a missing role assignment a live call path depends on, a network restriction that would block a call the design needs, a name that drifted between an output/env var and the code consuming it, or an attack-chain step that doesn't actually resolve end to end. Read-only: reports findings, never fixes them. Use after scaffolding/wiring is done and before (or instead of) a live apply, to catch issues cheaply."
 tools: Read, Grep, Glob, Bash
 model: fable
 effort: high
