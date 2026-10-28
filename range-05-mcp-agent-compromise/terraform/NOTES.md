@@ -90,9 +90,14 @@ provider **4.81.0** (pinned here as `~> 4.0`):
   Jailbreak/Indirect Attack, but the 4.x schema still marked it a **required**
   argument on every `content_filter` block regardless of type. Set to `"Low"`
   on both blocks here as a then-required-but-inert placeholder.
-  **Update (5.x):** under the now-installed 5.11.0 schema this argument is
-  optional, not required - the two don't agree on this across major
-  versions. The `"Low"` value is kept anyway since it's harmless.
+  **Update (5.x), corrected after a live apply:** under the now-installed
+  5.11.0 schema this argument isn't just optional, it's actively rejected
+  on these two filter names specifically - a live-apply `CustomizeDiff`
+  check, not caught by `terraform validate`: `severity_threshold is not
+  applicable for content_filter[0] with name Jailbreak` (and the same for
+  `Indirect Attack` if left in place). The `"Low"` value was NOT harmless
+  to keep, unlike the first pass at this note assumed - removed from both
+  blocks in `ai_foundry.tf`.
 - **`azurerm_ai_foundry`/`azurerm_ai_foundry_project` are legacy** and were
   deliberately not used for that reason (see above) - this was the one naming
   decision the open item forced: the "obvious" resource names are the wrong

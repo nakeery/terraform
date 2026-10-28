@@ -104,13 +104,16 @@ resource "azurerm_cognitive_account_project" "support_agent" {
 # "Content Safety account" resource for this, it's a content_filter on
 # the RAI policy attached to the deployment below. The provider's
 # documentation says severity_threshold "does not apply" to Jailbreak/
-# Indirect Attack; under provider 4.81.0 the schema marked the argument
+# Indirect Attack. Under provider 4.81.0 the schema marked the argument
 # required on every content_filter block regardless of filter type
-# (confirmed by `terraform validate` at the time), hence setting it to
-# "Low" on both below as a then-required-but-inert placeholder. As of
-# the 5.11.0 schema this argument is optional, not required - the value
-# is kept anyway since it's still harmless and avoids re-churning this
-# resource on the next provider bump.
+# (confirmed by `terraform validate` at the time), so it was set to
+# "Low" on both as a then-required-but-inert placeholder - that reading
+# was wrong. Under the now-installed 5.11.0 schema the argument isn't
+# just optional, it's actively rejected on these two filter names
+# specifically (a live-apply CustomizeDiff check, not caught by
+# `terraform validate`): "severity_threshold is not applicable for
+# content_filter[0] with name Jailbreak" (and, if left in place here,
+# the same for "Indirect Attack"). Omitted on both blocks below.
 #
 # block_enabled is driven by var.enable_prompt_shields (default true) so
 # the SAME deployment can be re-applied with shields present-but-not-
@@ -131,19 +134,17 @@ resource "azurerm_cognitive_account_rai_policy" "prompt_shields" {
   mode                 = "Blocking"
 
   content_filter {
-    name               = "Jailbreak"
-    source             = "Prompt"
-    filter_enabled     = true
-    block_enabled      = var.enable_prompt_shields
-    severity_threshold = "Low"
+    name           = "Jailbreak"
+    source         = "Prompt"
+    filter_enabled = true
+    block_enabled  = var.enable_prompt_shields
   }
 
   content_filter {
-    name               = "Indirect Attack"
-    source             = "Prompt"
-    filter_enabled     = true
-    block_enabled      = var.enable_prompt_shields
-    severity_threshold = "Low"
+    name           = "Indirect Attack"
+    source         = "Prompt"
+    filter_enabled = true
+    block_enabled  = var.enable_prompt_shields
   }
 
   tags = local.common_tags
