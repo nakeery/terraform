@@ -31,6 +31,7 @@ see Cost before deploying.
 **Category**: AI / ML Security  
 **Services**: Amazon Bedrock AgentCore (harness + gateway), Amazon Bedrock Knowledge Bases, Lambda, S3, IAM, Secrets Manager, Amazon S3 Vectors  
 **MITRE ATLAS Techniques**: Indirect Prompt Injection, LLM Prompt Injection, Overprivileged IAM Role
+**Framework mappings**: MITRE ATLAS, OWASP Top 10 for LLM Applications (2025), OWASP Top 10 for Agentic Applications (2025) — see [`solution/walkthrough.md`](solution/walkthrough.md#mitre-atlas-mapping)
 
 ---
 
@@ -235,7 +236,10 @@ See [`solution/walkthrough.md`](solution/walkthrough.md) — but try it yourself
 2. Why the trust boundary between an AI agent and its data sources matters
 3. How overprivileged IAM roles amplify the blast radius of AI-based attacks
 4. How to detect and mitigate prompt injection in Bedrock deployments
-5. How AI infrastructure maps to MITRE ATLAS attack techniques
+5. How these findings map onto MITRE ATLAS, the OWASP Top 10 for LLM
+   Applications (2025), and the OWASP Top 10 for Agentic Applications
+   (2025) — see `solution/walkthrough.md` for all three tables, including
+   what's deliberately *not* covered by this range under each framework
 
 ## Defensive Notes
 

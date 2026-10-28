@@ -13,10 +13,14 @@ know exactly what breaks, and how, when someone doesn't."
 end; the full exploitation path is in
 [`solution/walkthrough.md`](solution/walkthrough.md).
 
+**Framework mappings**: MITRE ATT&CK, OWASP Top 10 for Kubernetes (2025) — see [`solution/walkthrough.md`](solution/walkthrough.md#mitre-attck-mapping)
+
 ## The attack chain
 
-Each step maps to a real, named incident or documented technique -
-not an arbitrary "turn the security off" toggle. Walked in order:
+Each step maps to a real, named incident or documented technique - not an
+arbitrary "turn the security off" toggle - and onto MITRE ATT&CK and the
+OWASP Top 10 for Kubernetes (2025); see `solution/walkthrough.md` for both
+mapping tables. Walked in order:
 
 1. **Exposed admin tooling, no auth** (`k8s/vulnerable-dashboard.yaml`)
    Internet-facing pod via `LoadBalancer`, no authentication layer.

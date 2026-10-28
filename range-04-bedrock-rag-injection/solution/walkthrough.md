@@ -225,3 +225,46 @@ The assistant's response contains the flag as a "reference code":
 | Execution | AML.T0054 — Indirect Prompt Injection |
 | Collection | AML.T0035 — ML Artifact Collection |
 | Privilege Escalation (latent) | AML.T0068 — Exploit Overprivileged IAM Role |
+
+---
+
+## OWASP Top 10 for LLM Applications (2025) Mapping
+
+| Finding | Category |
+|---|---|
+| Writeable KB bucket + no ingestion validation (steps 1-2) | **LLM08:2025 Vector and Embedding Weaknesses** (the 2025 list splits RAG/vector-store attacks out from training-data poisoning specifically because the defenses differ - no access control or content validation on what enters the knowledge base's vector store) |
+| Vulnerable system prompt (step 3) | **LLM01:2025 Prompt Injection** (indirect sub-type - the instruction arrives via retrieved RAG content, never via direct user input) |
+| Over-privileged AWS-tools Lambda role (step 4) | **LLM06:2025 Excessive Agency** (the tool's backing identity, not the AgentCore Gateway/MCP protocol, is the least-privilege failure - mirrors range-05's over-scoped managed identity one layer up the same series) |
+| Sensitive S3 bucket / Secrets Manager reads under that role | **LLM02:2025 Sensitive Information Disclosure** |
+
+**Not covered by this range** (named here rather than silently skipped):
+LLM03:2025 Supply Chain (no third-party model, plugin, or dependency
+compromise - the writeable bucket is an access-control failure on first-
+party infrastructure, not a supply-chain one); LLM04:2025 Data and Model
+Poisoning (no training/fine-tuning pipeline anywhere in this stack -
+poisoning the RAG store is LLM08 above, not this); LLM05:2025 Improper
+Output Handling (nothing here demonstrates unsafe handling of the
+model's *own* output downstream); LLM07:2025 System Prompt Leakage (no
+exercise for extracting the harness's system prompt); LLM09:2025
+Misinformation (no model-output-accuracy angle); LLM10:2025 Unbounded
+Consumption (no resource-exhaustion/DoS angle built).
+
+---
+
+## OWASP Top 10 for Agentic Applications (2025) Mapping
+
+| Finding | Category |
+|---|---|
+| Steps 1-4 (full injection chain) | **ASI01 Agent Goal Hijack** (the poisoned document redirects the harness's objective toward exfiltration via its own tools) |
+| AWS-tools Lambda (`listBuckets`/`listObjects`/`getObject`/`listSecrets`/`getSecret`) misused as intended-but-wrong tools | **ASI02 Tool Misuse** |
+| Over-privileged Lambda execution role | **ASI03 Identity & Privilege Abuse** ("leaked or misused credentials let agents operate beyond their intended scope" - the same framing as this range's own README calls out for the Lambda role) |
+
+**Not covered by this range:** ASI04 Agentic Supply Chain Vulnerabilities
+(no tool-definition mutation/rug-pull finding here, unlike range-05's
+`schedule_meeting`); ASI05 Unexpected Code Execution (no code-execution
+surface in either Lambda target); ASI06 Memory & Context Poisoning (the
+harness is invoked per-request with no persistent cross-session memory to
+poison); ASI07 Insecure Inter-Agent Communication, ASI08 Cascading
+Failures, and ASI10 Rogue Agents (all presuppose multiple interacting
+agents - this range is single-agent throughout); ASI09 Human-Agent Trust
+Exploitation (no human-approval-of-agent-output step exists to exploit).

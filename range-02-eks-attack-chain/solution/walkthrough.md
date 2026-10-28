@@ -204,3 +204,30 @@ CloudWatch trail to reconstruct how any of Steps 1–5 happened.
 | Privilege Escalation | T1078.004 — Valid Accounts: Cloud Accounts (stolen node role) |
 | Defense Evasion | T1562.008 — Impair Defenses: Disable or Modify Cloud Logs |
 | Collection | T1530 — Data from Cloud Storage |
+
+---
+
+## OWASP Top 10 for Kubernetes (2025) Mapping
+
+| Finding | Category |
+|---|---|
+| Exposed admin tooling, no auth (finding 1) | **K06 Overly Exposed Kubernetes Components** (internet-facing via `LoadBalancer`, the same shape as the Tesla breach's exposed Dashboard; also touches **K09 Broken Authentication Mechanisms**, since no auth layer sits in front of it either) |
+| Privileged, host-networked pod (finding 2) | **K01 Insecure Workload Configurations** (`privileged: true` + `hostNetwork: true`, missing `runAsNonRoot`/`readOnlyRootFilesystem` - this is the category's textbook example) |
+| Cluster-admin RBAC binding (finding 3) | **K02 Overly Permissive Authorization Configurations** |
+| Over-privileged node IAM role, reached via IMDS (finding 4) | **K08 Cluster to Cloud Lateral Movement** (new in the 2025 revision specifically for this pattern - pod compromise pivoting through the node's cloud identity into the wider account, the same shape as the Capital One breach) |
+| Plaintext secrets in a ConfigMap (finding 5) | **K03 Secrets Management Failures** |
+| No audit trail (finding 6) | **K10 Inadequate Logging and Monitoring** |
+
+This range uses the OWASP Kubernetes Top 10's **2025 revision** (K01-K10),
+not the 2022 edition - the two renumber and reshuffle several categories
+(2025 adds K08 Cluster to Cloud Lateral Movement and drops Supply Chain
+Vulnerabilities and Outdated Components from the top ten), so don't mix
+citations from the two editions.
+
+**Not covered by this range** (named here rather than silently skipped):
+K04 Lack of Cluster Level Policy Enforcement (no OPA/Kyverno or admission-
+control layer is in scope at all, enforced or not); K05 Missing Network
+Segmentation Controls (this range's scope is single-cluster privilege
+escalation, not network segmentation - no `NetworkPolicy` finding exists
+either way); K07 Misconfigured and Vulnerable Cluster Components (no
+outdated-component/CVE-scanning angle built).

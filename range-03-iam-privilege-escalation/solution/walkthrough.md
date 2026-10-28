@@ -198,3 +198,24 @@ independent of the Step 2 and Step 3 paths above.
 | Persistence / Privilege Escalation | T1098.001 — Account Manipulation: Additional Cloud Credentials |
 | Execution | T1648 — Serverless Execution |
 | Collection | T1530 — Data from Cloud Storage |
+
+---
+
+## OWASP mapping: deliberately not included
+
+Unlike ranges 02, 04, and 05 in this series, this range has no OWASP
+framework mapping, by choice rather than oversight. Checked rather than
+assumed: no official OWASP project cleanly covers pure cloud IAM
+privilege-escalation chains (role-to-role trust, `PassRole`/`iam:*`
+misuse, cross-account assumption) the way the OWASP Kubernetes Top 10
+covers cluster misconfiguration or the OWASP LLM/Agentic Top 10s cover
+AI/agent risk. The closest official candidate is OWASP Top 10 (web
+applications) **A01:2021 Broken Access Control**, which does list
+privilege escalation as an example - but that framework is built around
+application-layer access control (missing authZ checks on a web request),
+not cloud identity graphs, role trust policies, or credential chaining,
+and force-mapping this chain onto it would add a citation without adding
+precision. The MITRE ATT&CK Cloud Matrix table above is the framework
+that actually fits this range's findings category by category; it's kept
+as the sole mapping here rather than padding this section with a weak
+second one.

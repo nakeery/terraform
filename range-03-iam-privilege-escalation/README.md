@@ -14,6 +14,8 @@ S3 bucket, so it costs effectively nothing to run.
 **Status: complete.** All three escalation paths are built and walkable end to
 end, from the low-privilege foothold to full account access.
 
+**Framework mappings**: MITRE ATT&CK Cloud Matrix — see [`solution/walkthrough.md`](solution/walkthrough.md#mitre-attck-cloud-matrix-mapping). No OWASP mapping is included; see the walkthrough's "OWASP mapping: deliberately not included" section for why.
+
 ## What this builds
 
 - A **low-privilege attacker user** (`*-low-priv-*`) with a programmatic
