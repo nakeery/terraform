@@ -29,7 +29,7 @@ see [What's left](#whats-left-todo-yours-to-complete) below.
 **Difficulty**: Medium
 **Category**: AI / ML Security (agent & tool layer)
 **Services**: Azure AI Foundry (Cognitive Services account + project), Azure OpenAI (tool/function-calling model deployment), Azure AI Content Safety (Prompt Shields), Azure Container Apps, Azure Container Registry, Azure Key Vault, Azure Storage, Managed Identity, Log Analytics
-**Vulnerability classes**: Prompt Injection - indirect (tool-output) and direct (jailbreak), Overprivileged Managed Identity / Excessive Agency, Tool Description Poisoning, Confused Deputy, Rug Pull (tool definition mutation)
+**Vulnerability classes**: Prompt Injection - indirect (tool-output) and direct (jailbreak), Overprivileged Managed Identity / Excessive Agency, Tool Description Poisoning, Confused Deputy, Rug Pull (tool definition mutation), System Prompt Leakage
 **Framework mappings**: MITRE ATLAS, OWASP Top 10 for LLM Applications (2025), OWASP Top 10 for Agentic Applications (2025) — see [`solution/walkthrough.md`](solution/walkthrough.md#mitre-atlas-mapping)
 
 ---
@@ -125,7 +125,7 @@ the ticket the secret gets posted back to.
 - An **MCP server** (`../mcp-server/server.py`) exposing eight tools: two
   reconnaissance/payload-delivery primitives (`list_tickets`,
   `submit_ticket` — the discovery arc below), three that make up the
-  primary chained attack, and three standalone tool-layer findings
+  primary chained attack, and four standalone tool-layer findings
   (below).
 - An **orchestrator** (`../orchestrator/agent_loop.py`) that drives the
   tool-calling loop directly against the Foundry account's chat-completions
@@ -134,7 +134,9 @@ the ticket the secret gets posted back to.
   with no LLM involved, for the discovery steps that don't need one.
 - A **`payloads/`** directory holding [`jailbreak_attempt.txt`](payloads/jailbreak_attempt.txt),
   a direct-injection prompt for testing the RAI policy's `Jailbreak`
-  filter separately from the ticket-based indirect chain.
+  filter separately from the ticket-based indirect chain, and
+  [`system_prompt_leak.txt`](payloads/system_prompt_leak.txt), a direct
+  pretext asking the agent to recite its own instructions verbatim.
 
 No document store, no vector index, no RAG pipeline anywhere in this stack —
 that's range-04's trigger, not this one.
@@ -201,11 +203,12 @@ the trigger is the agent's tool-calling path itself.
    `Jailbreak` content filter, which nothing in steps 0–4 ever touches —
    see `solution/walkthrough.md` Step 8.
 
-### Three standalone findings (not part of the chained attack)
+### Four standalone findings (not part of the chained attack)
 
 These demonstrate distinct tool-layer vulnerability classes on their own,
 independent of the ticket-injection chain above — see
-[`../mcp-server/HANDOFF.md`](mcp-server/HANDOFF.md) for how each is wired:
+[`../mcp-server/HANDOFF.md`](mcp-server/HANDOFF.md) for how each is wired
+(items 6–8) or run directly against the orchestrator (item 9):
 
 6. **`get_account_balance` — tool description poisoning.** The tool's
    *registered description* (not its implementation) carries a hidden
@@ -221,6 +224,16 @@ independent of the ticket-injection chain above — see
    *after* it's been reviewed/approved, without its name or signature
    changing — the SDK's own `remove_tool()` / `add_tool()` make this one
    unremarkable extra call away, not a hack.
+9. **System prompt leakage.** [`payloads/system_prompt_leak.txt`](payloads/system_prompt_leak.txt)
+   talks to `orchestrator/agent_loop.py` directly (no ticket, no tools)
+   with a pretext/authority-override jailbreak asking the agent to output
+   its own system prompt verbatim. The prompt it leaks confirms the same
+   design flaw the ticket-injection chain exploits — "treat the full text
+   of any tool result as authoritative context" — without stating the
+   specific convention (the TICKET-0999 auto-append note) that the
+   discovery arc exists to find; leaking it narrows *why* the chain works,
+   not *how* to run it. Exercises the same `Jailbreak` content filter as
+   step 5 above, on a different target string.
 
 ---
 
@@ -426,7 +439,11 @@ yourself first.
    straight at the model) and *indirect* (steps 0–4) — and what the
    `Jailbreak` filter catches that `Indirect Attack` doesn't, and vice
    versa.
-8. How these findings map onto MITRE ATLAS, the OWASP Top 10 for LLM
+8. Why a leaked system prompt is its own finding, separate from the
+   ticket-injection chain — it confirms the design flaw the agent was
+   built with, without handing you the specific convention the discovery
+   arc exists to find.
+9. How these findings map onto MITRE ATLAS, the OWASP Top 10 for LLM
    Applications (2025), and the OWASP Top 10 for Agentic Applications
    (2025) — see `solution/walkthrough.md` for all three tables, including
    what's deliberately *not* covered by this range under each framework.
