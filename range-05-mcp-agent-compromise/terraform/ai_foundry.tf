@@ -104,11 +104,13 @@ resource "azurerm_cognitive_account_project" "support_agent" {
 # "Content Safety account" resource for this, it's a content_filter on
 # the RAI policy attached to the deployment below. The provider's
 # documentation says severity_threshold "does not apply" to Jailbreak/
-# Indirect Attack, but the azurerm 4.x schema still marks the argument
+# Indirect Attack; under provider 4.81.0 the schema marked the argument
 # required on every content_filter block regardless of filter type
-# (confirmed by `terraform validate` against provider 4.81.0) - set to
-# "Low" on both as a required-but-inert placeholder; it has no effect on
-# these two categories.
+# (confirmed by `terraform validate` at the time), hence setting it to
+# "Low" on both below as a then-required-but-inert placeholder. As of
+# the 5.11.0 schema this argument is optional, not required - the value
+# is kept anyway since it's still harmless and avoids re-churning this
+# resource on the next provider bump.
 #
 # block_enabled is driven by var.enable_prompt_shields (default true) so
 # the SAME deployment can be re-applied with shields present-but-not-

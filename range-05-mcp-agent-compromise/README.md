@@ -210,8 +210,12 @@ These demonstrate distinct vulnerability classes on their own, independent
 of the ticket-injection chain above — the first three are tool-layer
 (the MCP server's own tools); the fourth (system prompt leakage) sits at
 the orchestrator/model layer instead. See
-[`../mcp-server/HANDOFF.md`](mcp-server/HANDOFF.md) for how each is wired
-(items 6–8) or run directly against the orchestrator (item 9):
+[`../mcp-server/HANDOFF.md`](mcp-server/HANDOFF.md) for how the first
+three are wired (its own "What's already 'real' (4-6)" section - HANDOFF
+numbers them 4-6, not 6-8; the two documents use independent numbering
+schemes). System prompt leakage (the fourth, below) isn't in HANDOFF at
+all since it lives in the orchestrator, not the MCP server - run it
+directly per Step 9 of `solution/walkthrough.md` instead:
 
 6. **`get_account_balance` — tool description poisoning.** The tool's
    *registered description* (not its implementation) carries a hidden

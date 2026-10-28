@@ -87,9 +87,12 @@ provider **4.81.0** (pinned here as `~> 4.0`):
   in `ai_foundry.tf` and is the resource the later guardrail test should target.
   One correction to the provider's own doc text, found only by running
   `terraform validate`: the docs say `severity_threshold` "does not apply" to
-  Jailbreak/Indirect Attack, but the 4.x schema still marks it a **required**
+  Jailbreak/Indirect Attack, but the 4.x schema still marked it a **required**
   argument on every `content_filter` block regardless of type. Set to `"Low"`
-  on both blocks here as a required-but-inert placeholder.
+  on both blocks here as a then-required-but-inert placeholder.
+  **Update (5.x):** under the now-installed 5.11.0 schema this argument is
+  optional, not required - the two don't agree on this across major
+  versions. The `"Low"` value is kept anyway since it's harmless.
 - **`azurerm_ai_foundry`/`azurerm_ai_foundry_project` are legacy** and were
   deliberately not used for that reason (see above) - this was the one naming
   decision the open item forced: the "obvious" resource names are the wrong
@@ -243,7 +246,7 @@ meant here.
    always falls back to Shared Key, which no longer exists here - noted
    in `storage.tf` directly above the two container resources. The storage
    over-privilege itself is still a documented (not live-exercised)
-   finding in this project's current scope, since none of the six MCP
+   finding in this project's current scope, since none of the eight MCP
    tools reads storage.
 5. **Model choice (`gpt-4o-mini` default).** Unchanged; revisit once the
    orchestrator's walkthrough is run against a live deployment.
@@ -263,7 +266,7 @@ list. `identity.tf`'s `agent_storage_read_scoped` grant (the correctly-scoped
 documented before/after) can't actually be demonstrated live until this is
 fixed too.
 
-This is latent, not live, because none of the six MCP tools in
+This is latent, not live, because none of the eight MCP tools in
 `../mcp-server/server.py` reads storage yet (see design decision #4 above)
 - the "storage pivot" is still narrative, not demonstrated.
 

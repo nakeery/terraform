@@ -17,8 +17,10 @@ the project owner) needs to pick the work back up.
 
 ## Files
 
-- `server.py` - the MCP server, all six tools, built on
-  `mcp.server.mcpserver.MCPServer` (official MCP Python SDK, v2.x).
+- `server.py` - the MCP server, all eight tools (the six below plus the
+  two recon/payload-delivery tools added later - see "Update: discovery
+  phase"), built on `mcp.server.mcpserver.MCPServer` (official MCP Python
+  SDK, v2.x).
 - `mock_data.py` - all mock backends (ticket store, secret store, local
   sink/log, user directory). No network I/O anywhere in this module.
 - `requirements.txt` / `pyproject.toml` - pinned to `mcp==2.3.0`.

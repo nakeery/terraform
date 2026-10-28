@@ -29,7 +29,7 @@ variable "openai_deployment_capacity" {
 }
 
 variable "allowed_source_cidrs" {
-  description = "CIDR(s) allowed to reach the storage account, Key Vault, AI Foundry account, and the MCP server Container App. Auto-detected to the operator's own public IP (/32) when left null - see access.tf. Set explicitly if you're applying from one network but walking the attack chain from another."
+  description = "CIDR(s) allowed to reach the storage account, AI Foundry account, and the MCP server Container App - deliberately NOT Key Vault, see keyvault.tf. Auto-detected to the operator's own public IP (/32) when left null - see access.tf. Set explicitly if you're applying from one network but walking the attack chain from another."
   type        = list(string)
   default     = null
 }
