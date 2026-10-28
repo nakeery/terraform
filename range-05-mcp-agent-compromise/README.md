@@ -125,8 +125,9 @@ the ticket the secret gets posted back to.
 - An **MCP server** (`../mcp-server/server.py`) exposing eight tools: two
   reconnaissance/payload-delivery primitives (`list_tickets`,
   `submit_ticket` — the discovery arc below), three that make up the
-  primary chained attack, and four standalone tool-layer findings
-  (below).
+  primary chained attack, and three standalone tool-layer findings
+  (below) — plus a fourth standalone finding, system prompt leakage, that
+  lives at the orchestrator layer rather than as an MCP tool.
 - An **orchestrator** (`../orchestrator/agent_loop.py`) that drives the
   tool-calling loop directly against the Foundry account's chat-completions
   endpoint and the real MCP server — see [Why no Agent Service](#why-this-skips-the-managed-agent-service) below.
@@ -205,8 +206,10 @@ the trigger is the agent's tool-calling path itself.
 
 ### Four standalone findings (not part of the chained attack)
 
-These demonstrate distinct tool-layer vulnerability classes on their own,
-independent of the ticket-injection chain above — see
+These demonstrate distinct vulnerability classes on their own, independent
+of the ticket-injection chain above — the first three are tool-layer
+(the MCP server's own tools); the fourth (system prompt leakage) sits at
+the orchestrator/model layer instead. See
 [`../mcp-server/HANDOFF.md`](mcp-server/HANDOFF.md) for how each is wired
 (items 6–8) or run directly against the orchestrator (item 9):
 
