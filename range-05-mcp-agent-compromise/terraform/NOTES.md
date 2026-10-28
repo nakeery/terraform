@@ -174,6 +174,39 @@ this reason, used by `storage.tf` and `ai_foundry.tf`'s `ip_rules`.
 `/32` fine, so it keeps using `local.allowed_source_cidrs` directly - not
 changed, and not verified further since nothing reported it broken.
 
+## Real finding from a provider major-version bump: azurerm 4.x -> 5.x
+
+The project owner moved `required_providers.azurerm` to `~> 5.0` (now
+`5.11.0` per the lock file) outside this environment. That surfaced two more
+schema changes on `storage.tf`, caught on `plan` this time, not `validate`
+(these ARE pure schema changes - "Unsupported argument" is normally a
+`validate`-time error with no credentials needed, but the file had already
+drifted out of sync with what `validate` had last checked, so they only
+showed up once a live `plan` was run against the new provider):
+
+- **`azurerm_storage_blob`** dropped `storage_account_name` and
+  `storage_container_name` entirely in 5.x. Both blob resources now take a
+  single `storage_container_id = azurerm_storage_container.<x>.id` instead -
+  confirmed against the provider's own current example
+  (`website/docs/r/storage_blob.html.markdown` on `main`), which no longer
+  documents either of the old arguments.
+- **`azurerm_storage_account.public_network_access_enabled`** (bool) became
+  `public_network_access` (string: `Enabled` / `Disabled` /
+  `SecuredByPerimeter`, defaulting to `Enabled`) in 5.x - confirmed against
+  the same provider docs. `azurerm_cognitive_account` (`ai_foundry.tf`) was
+  **not** renamed the same way and still takes the old boolean
+  `public_network_access_enabled` as of 5.11.0 - the two resources didn't
+  move in lockstep, so don't assume one implies the other on the next bump
+  either.
+
+One of these got inverted mid-edit (`public_network_access` briefly set to
+`"Disabled"`, which - with no Private Endpoint anywhere in this stack -
+would have blocked Terraform's own data-plane container/blob creation, not
+just the IP-allowlist story the surrounding comment describes). Fixed back
+to `"Enabled"` with `network_rules` doing the actual restricting, which is
+what "reachable, but only from `local.allowed_source_cidrs`" has always
+meant here.
+
 ## Design decisions that needed the project owner's sign-off (resolved)
 
 1. **The Agent object + tool manifest is not in Terraform at all.**

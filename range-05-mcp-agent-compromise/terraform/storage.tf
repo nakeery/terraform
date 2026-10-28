@@ -21,7 +21,7 @@ resource "azurerm_storage_account" "main" {
   # the open internet. A real deployment handling anything sensitive would
   # go further still and front access entirely through managed identities
   # + Private Endpoints instead of a public endpoint with an IP allowlist.
-  public_network_access_enabled = true
+  public_network_access = "Enabled"
 
   network_rules {
     default_action = "Deny"
@@ -83,11 +83,10 @@ resource "azurerm_storage_container" "sensitive_data" {
 # as a plausible exfiltration target.
 # -------------------------------------------------------
 resource "azurerm_storage_blob" "sensitive_sample" {
-  name                   = "customer_export_sample.csv"
-  storage_account_name   = azurerm_storage_account.main.name
-  storage_container_name = azurerm_storage_container.sensitive_data.name
-  type                   = "Block"
-  source_content         = <<-EOT
+  name                 = "customer_export_sample.csv"
+  storage_container_id = azurerm_storage_container.sensitive_data.id
+  type                 = "Block"
+  source_content       = <<-EOT
     customer_id,full_name,email,fake_ssn,notes
     1001,Jane Fakeperson,jane.fakeperson@example.invalid,000-00-0001,SAMPLE DATA - NOT REAL
     1002,John Q. Example,john.example@example.invalid,000-00-0002,SAMPLE DATA - NOT REAL
@@ -103,9 +102,8 @@ resource "azurerm_storage_blob" "sensitive_sample" {
 # meant to use - gives the tool-calling path something real to
 # retrieve during a walkthrough before any pivot happens.
 resource "azurerm_storage_blob" "tool_seed" {
-  name                   = "support_faq.txt"
-  storage_account_name   = azurerm_storage_account.main.name
-  storage_container_name = azurerm_storage_container.tool_data.name
-  type                   = "Block"
-  source_content         = "Q: How do I reset my password?\nA: Visit the self-service portal and click 'Forgot password'.\n"
+  name                 = "support_faq.txt"
+  storage_container_id = azurerm_storage_container.tool_data.id
+  type                 = "Block"
+  source_content       = "Q: How do I reset my password?\nA: Visit the self-service portal and click 'Forgot password'.\n"
 }
