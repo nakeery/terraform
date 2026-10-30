@@ -288,6 +288,16 @@ discovery path.
 - Azure CLI, logged in (`az login`) with rights to create resource groups,
   Key Vault, Cognitive Services, and Container Apps resources in the target
   subscription.
+- The `Microsoft.App` resource provider registered on that subscription
+  (`az provider register --namespace Microsoft.App --wait`) — a fresh or
+  rarely-used subscription may not have this yet; `terraform apply` fails
+  on `azurerm_container_app_environment.main` with
+  `MissingSubscriptionRegistration` until it is.
+- Nonzero Azure OpenAI quota for `var.openai_model_name` under the
+  `GlobalStandard` SKU in your region — check with
+  `az cognitiveservices usage list --location eastus2 --query "[].{Name:name.value, Current:currentValue, Limit:limit}" -o table`
+  before applying. Model availability and default quota both drift over
+  time; see `terraform/NOTES.md` for what was actually checked and when.
 - A region with Azure AI Foundry Agent Service, tool/function-calling model
   deployments, and the Content Safety `Indirect Attack` filter available —
   this range defaults to `eastus2` (`variables.tf`); re-check regional

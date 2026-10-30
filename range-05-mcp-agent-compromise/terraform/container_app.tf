@@ -55,9 +55,16 @@ resource "azurerm_log_analytics_workspace" "main" {
 }
 
 resource "azurerm_container_app_environment" "main" {
-  name                       = "cae-${local.name_prefix}-${local.suffix}"
-  location                   = azurerm_resource_group.main.location
-  resource_group_name        = azurerm_resource_group.main.name
+  name                = "cae-${local.name_prefix}-${local.suffix}"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  # azurerm 5.x requires logs_destination explicitly set to "log-analytics"
+  # when log_analytics_workspace_id is provided - no longer inferred from
+  # the workspace ID alone (a live-apply CustomizeDiff check, not caught by
+  # `terraform validate`, same pattern as storage.tf's severity_threshold
+  # finding - see NOTES.md).
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
   tags = local.common_tags

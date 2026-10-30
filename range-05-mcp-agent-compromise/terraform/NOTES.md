@@ -274,6 +274,57 @@ other model-behavior claim in this file) - it's a judgment call informed
 directly by what range-04 hit in practice, not a guarantee gpt-4o-mini
 behaves identically.
 
+## Real finding from a live apply: Microsoft.App not registered, logs_destination required
+
+Two more live-apply errors, both before the model/quota issue below:
+
+- **`MissingSubscriptionRegistration` on `azurerm_container_app_environment.main`**
+  - `The subscription is not registered to use namespace 'Microsoft.App'.`
+    A one-time subscription-level setup step, not a code bug - fixed by the
+    operator running `az provider register --namespace Microsoft.App --wait`
+    before re-applying. Worth adding to the README prerequisites for anyone
+    hitting this cold.
+- **`azurerm_container_app_environment.main` rejected `log_analytics_workspace_id`
+  with no `logs_destination` set** - another azurerm 5.x schema change, same
+  pattern as the `storage.tf` `severity_threshold`/`/32` findings above:
+  `logs_destination` must now be explicitly set to `"log-analytics"` when
+  `log_analytics_workspace_id` is provided; it's no longer inferred. Fixed
+  in `container_app.tf` by adding `logs_destination = "log-analytics"`
+  alongside the existing `log_analytics_workspace_id`.
+
+## Real finding from a live apply: model deprecation and GlobalStandard quota
+
+The model choice left open in "Design decisions" #5 above is now resolved
+against a real subscription, and it surfaced two independent problems with
+the original `gpt-4o-mini` default - not one:
+
+1. **`gpt-4o-mini` has no non-deprecating version to fall back to.**
+   `az cognitiveservices account list-models` against the live account shows
+   exactly one version of `gpt-4o-mini` ever existed (`2024-07-18`), and its
+   `LifecycleStatus` is `Deprecating` - Azure's "no new deployments, existing
+   ones may continue" state. Unlike `gpt-4o` (whose current default version,
+   `2024-11-20`, is `Legacy` - still deployable), there is no version to pin
+   `openai_model_version` to that avoids this. `gpt-4o-mini` cannot be
+   deployed fresh in this account at all, regardless of version pinning.
+2. **`gpt-4o`'s `GlobalStandard` quota was 0 in the subscription this was
+   checked against.** `az cognitiveservices usage list --location eastus2
+   --query "[].{Name:name.value, Current:currentValue, Limit:limit}" -o table`
+   (the plain `-o table` form silently drops the `Name` column - use the
+   `--query` form above to get usable output) showed
+   `OpenAI.GlobalStandard.gpt-4o` and `OpenAI.GlobalStandard.gpt-4o-mini`
+   both at a 0.0 limit - not "insufficient," but zero allocated. Lowering
+   `openai_deployment_capacity` doesn't help when the limit itself is 0.
+
+**Resolution:** the same usage listing showed `OpenAI.GlobalStandard.gpt-5-mini`
+at a 500.0 limit, and `gpt-5-mini`'s `LifecycleStatus` is `GenerallyAvailable`
+(not just `Legacy`) in `list-models`. It needs no `ai_foundry.tf` change -
+same `model.format = "OpenAI"`, same `sku.name = "GlobalStandard"` - only the
+`openai_model_name` default in `variables.tf` moved from `gpt-4o-mini` to
+`gpt-5-mini`. This is a snapshot of one subscription's quota at one point in
+time, not a general claim about Azure's default allocations - re-run the
+`usage list` command above before trusting this default in a different
+subscription or after Azure's catalog changes again.
+
 ## Design decisions that needed the project owner's sign-off (resolved)
 
 1. **The Agent object + tool manifest is not in Terraform at all.**
@@ -311,8 +362,9 @@ behaves identically.
    owner's call in the README/this file's intro note above. If a future
    iteration wants a second, independent least-privilege demo, revisit
    this decision rather than assume storage is gone for good.
-5. **Model choice (`gpt-4o-mini` default).** Unchanged; revisit once the
-   orchestrator's walkthrough is run against a live deployment.
+5. **Model choice (`gpt-4o-mini` default).** **Resolved, against a live
+   deployment:** see "Real finding from a live apply: model deprecation
+   and GlobalStandard quota" below. Default moved to `gpt-5-mini`.
 
 ## Former known gap: storage network ACL (resolved by removing storage)
 

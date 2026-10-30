@@ -11,9 +11,9 @@ variable "scenario_id" {
 }
 
 variable "openai_model_name" {
-  description = "Azure OpenAI model deployed behind the agent. Must be a chat-completions model with native tool/function-calling support. gpt-4o-mini keeps the lab cheap; swap to gpt-4o if the walkthrough needs stronger tool-selection behavior."
+  description = "Azure OpenAI model deployed behind the agent. Must be a chat-completions model with native tool/function-calling support. gpt-5-mini keeps the lab cheap and is confirmed to have nonzero GlobalStandard quota as of this writing (see terraform/NOTES.md) - gpt-4o-mini has no non-deprecating version left to deploy, and gpt-4o's GlobalStandard quota was 0 in the subscription this was checked against. Re-check `az cognitiveservices usage list` before assuming this still holds in yours."
   type        = string
-  default     = "gpt-4o-mini"
+  default     = "gpt-5-mini"
 }
 
 variable "openai_model_version" {
