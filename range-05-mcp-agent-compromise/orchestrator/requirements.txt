@@ -1,3 +1,8 @@
-openai==1.54.4
+# openai>=1.56.1 required: httpx>=0.28.0 removed the `proxies` kwarg that
+# openai<1.55.3 still passed internally (TypeError: Client.__init__() got
+# an unexpected keyword argument 'proxies'), and httpx isn't pinned here,
+# so pip resolves whatever current httpx is available. 1.56.1 replaced
+# the proxies-based implementation with mounts, fully resolving it.
+openai==1.56.1
 azure-identity==1.19.0
 mcp==2.3.0
