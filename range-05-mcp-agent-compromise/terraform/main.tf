@@ -53,20 +53,11 @@ provider "azurerm" {
   # blocking a clean re-apply in the same subscription. Left as an empty
   # block rather than restating the defaults.
   features {}
-
-  # Required for the provider itself to manage storage containers/blobs
-  # once storage.tf sets shared_access_key_enabled = false on the storage
-  # account - per the provider's own docs, Terraform must authenticate to
-  # the storage data plane via Azure AD instead of falling back to the
-  # account key. The deploying principal needs an RBAC data-plane role on
-  # the storage account for this to work - see
-  # azurerm_role_assignment.deployer_storage_blob_contributor in storage.tf.
-  storage_use_azuread = true
 }
 
-# Random suffix so globally-unique names (Key Vault, Storage Account,
-# Cognitive Services custom subdomain) don't collide across repeated
-# stand-up/tear-down cycles or across multiple subscriptions.
+# Random suffix so globally-unique names (Key Vault, Cognitive Services
+# custom subdomain) don't collide across repeated stand-up/tear-down
+# cycles or across multiple subscriptions.
 resource "random_id" "suffix" {
   byte_length = 3
 }
@@ -77,9 +68,8 @@ locals {
 
   # Deliberate marker so this is unmistakable in the Azure portal - never
   # let this tag be confused with real infrastructure. Every identity,
-  # vault, storage account and AI Foundry resource below is intentionally
-  # insecure. Same Purpose tag convention and literal value used by
-  # ranges 02-04.
+  # vault, and AI Foundry resource below is intentionally insecure. Same
+  # Purpose tag convention and literal value used by ranges 02-04.
   common_tags = {
     Project     = "range-05-mcp-agent-compromise"
     Environment = "training"

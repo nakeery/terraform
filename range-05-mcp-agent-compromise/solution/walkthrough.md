@@ -4,8 +4,8 @@
 
 An internal IT support agent, built on Azure AI Foundry, answers questions
 using tools served by a standalone MCP server. You have no elevated
-credentials of your own — no Key Vault access, no storage access — just
-whatever a low-privilege support requester can do: file tickets, and ask
+credentials of your own — no Key Vault access — just whatever a
+low-privilege support requester can do: file tickets, and ask
 the assistant questions. Nobody is handing you a ticket number. You have
 to enumerate what's there, notice something worth reading, learn how the
 assistant decides what to trust, and then use that to plant your own
@@ -422,7 +422,7 @@ signal that what it approved is no longer what it's calling.
 |---|---|
 | No validation on ticket content (`submit_ticket`) | Sanitize/scan ticket bodies for embedded instruction-like patterns before they ever reach a tool result |
 | Internal documentation reachable through a customer-facing tool | Separate internal/admin records from customer ticket data, with different tools and different trust levels |
-| Over-scoped managed identity (`identity.tf`) | Least privilege — grant `Storage Blob Data Reader` on the one container the tool reads, and no Key Vault grant at all if the agent's job never needs one |
+| Over-scoped managed identity (`identity.tf`) | Least privilege — no Key Vault grant at all, since the agent's stated job (ticket lookup) never needs one |
 | Tool output treated as trusted context | Mark tool-returned content as untrusted in the system prompt / orchestration layer; never let it alone trigger further tool calls without a human or policy check |
 | No input/output guardrails against indirect injection | Azure AI Content Safety Prompt Shields (Indirect Attack filter) — attached here and shown both on and off |
 | System prompt has no enforcement behind it against direct override | Azure AI Content Safety Prompt Shields (Jailbreak filter) — the other half of the same RAI policy, tested separately in Step 8; require explicit re-authentication/elevation for any claimed "audit/maintenance mode" rather than trusting a user's self-asserted authority |

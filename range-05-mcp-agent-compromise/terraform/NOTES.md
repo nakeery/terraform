@@ -5,20 +5,18 @@
 | File | Resources | Role in the chain |
 |---|---|---|
 | `main.tf` | `azurerm_resource_group`, provider/locals/tags | project scaffolding |
-| `identity.tf` | `azurerm_user_assigned_identity.agent`, two `azurerm_role_assignment`s | **the vulnerability** - the over-scoped identity |
+| `identity.tf` | `azurerm_user_assigned_identity.agent`, a single `azurerm_role_assignment` | **the vulnerability** - the over-scoped identity |
 | `ai_foundry.tf` | `azurerm_cognitive_account` (kind `AIServices`), `azurerm_cognitive_account_project`, `azurerm_cognitive_account_rai_policy` (Prompt Shields), `azurerm_cognitive_deployment` | the agent's compute + model + guardrail |
-| `keyvault.tf` | `azurerm_key_vault`, `azurerm_key_vault_secret` (dummy) | pivot target 1 |
-| `storage.tf` | `azurerm_storage_account`, two containers, two blobs | pivot target 2 + the agent's legitimate tool data |
+| `keyvault.tf` | `azurerm_key_vault`, `azurerm_key_vault_secret` (dummy) | pivot target |
 | `outputs.tf` | outputs incl. `warning` | reference values + the standard safety reminder |
 
 No document store, no vector index, no RAG pipeline anywhere in this stack - out of scope per the spec.
 
 ## Why the managed identity is over-scoped (the documented vulnerability)
 
-The agent's **stated job**, as modeled in `identity.tf`'s header comment: answer
-employee support questions using one read-only tool that looks up a single FAQ
-blob (`agent-tool-data/support_faq.txt`) in the storage account. That's the
-entire job. It never writes anything, anywhere, and it never touches Key Vault.
+The agent's **stated job**, as modeled in `identity.tf`'s header comment: look
+up ticket status for support requesters. That's the entire job. It never
+writes anything outside a ticket, and it never touches Key Vault.
 
 What `azurerm_user_assigned_identity.agent` actually holds, attached directly to
 the Foundry account (`azurerm_cognitive_account.foundry`) via its `identity {}`
@@ -28,30 +26,29 @@ block:
    The agent has no legitimate reason to resolve *any* Key Vault secret - the
    correctly-scoped answer is no Key Vault grant at all. This identity can read
    the unrelated `internal-billing-db-connection-string` dummy secret anyway.
-2. **`Storage Blob Data Contributor` - read *and* write - at the storage
-   account scope** (`azurerm_storage_account.main`), not scoped to the one
-   container (`agent-tool-data`) the tool actually reads. That one grant also
-   reaches the sibling `sensitive-customer-records` container holding the fake
-   "sensitive" dataset, and grants write/delete there too, when the tool only
-   ever needs read access to one blob in one container.
 
 This mirrors the lesson from range-04 (the Bedrock RAG range): the
 over-privileged identity sits one hop behind the thing an attacker actually
 touches (there, a Lambda invoked through an AgentCore gateway target; here, the
 Foundry account's own managed identity), and the design mistake is the same -
-granting at the account/vault level because "the agent might need more later,"
-instead of granting to the one object the stated job requires. The trigger
+granting at the vault level because "the agent might need more later," instead
+of granting nothing at all, which is what the stated job requires. The trigger
 differs by range: range-04's injection vector is a poisoned knowledge-base
 document; this range has no document store, so the trigger is the agent's
 tool-calling path itself (a crafted tool argument, a compromised MCP-style tool
 backend, or an unvalidated tool result) reaching an identity that was scoped to
-"the account" instead of "the one container and zero secrets" the job needed.
+"the vault" instead of "zero secrets," which is all the job needed.
 
-`identity.tf` leaves a `TODO (yours to complete)` to add the *correctly*-scoped
-role assignment (`Storage Blob Data Reader` on
-`azurerm_storage_container.tool_data` alone) alongside the over-scoped one, as
-a before/after demonstration, then drop the over-scoped grant and re-walk the
-scenario to show the tool still works at least privilege.
+An earlier draft of this range also provisioned a storage account and a second,
+parallel over-scoped grant (`Storage Blob Data Contributor` at the account
+scope, vs. a correctly-scoped `Storage Blob Data Reader` on one container) as a
+second, independent least-privilege lesson. It was removed - see "Design
+decision" #4 and the former "Known gap" section below, both superseded by that
+removal - because no MCP tool ever read storage, so the lesson was never
+live-exercised, and finishing it properly meant standing up VNet integration
+this range doesn't otherwise need. The Key Vault grant above was always the
+one the live attack chain actually exercises, and it's unaffected by the
+removal.
 
 ## Open item: current Azure support, what I confirmed vs. couldn't
 
@@ -266,10 +263,8 @@ fact. Findings, most consequential first:
   above the function instead; the vulnerability (no check in the
   implementation) is unchanged.
 - **`get_account_balance`'s poisoned description** (its own "SYSTEM:" block)
-  and **`storage.tf`'s fake customer-export CSV** were checked and are fine
-  as-is - the former already reads as mundane tool metadata, not alarming;
-  the latter isn't reachable by any tool today and is clearly self-labeled
-  "SAMPLE DATA - NOT REAL."
+  was checked and is fine as-is - it already reads as mundane tool metadata,
+  not alarming.
 
 None of this is verified against a live deployment (same caveat as every
 other model-behavior claim in this file) - it's a judgment call informed
@@ -291,86 +286,44 @@ behaves identically.
    account. This is what makes the `read_secret` -> Key Vault pivot a real,
    literally-exercised managed-identity call rather than a documented one.
 3. **Networking is wide open.** **Resolved, partially:** `access.tf` adds
-   an auto-detected operator-IP allowlist, applied to the storage account
-   (`storage.tf`), the Foundry account (`ai_foundry.tf`), and the Container
-   App's ingress (`container_app.tf`) - everywhere the operator or the
-   orchestrator is the actual caller. Deliberately **not** applied to the
+   an auto-detected operator-IP allowlist, applied to the Foundry account
+   (`ai_foundry.tf`) and the Container App's ingress (`container_app.tf`) -
+   everywhere the operator or the orchestrator is the actual caller. Deliberately **not** applied to the
    Key Vault (see the comment in `keyvault.tf`): the only caller that
    matters there is the Container App's own outbound traffic, whose IP
    isn't known at plan time and isn't the operator's - firewalling to the
    operator's `/32` would block the exact call this range exists to
    demonstrate. Private Endpoints/VNet integration remain a further-
    hardening `TODO` on the Foundry account.
-4. **`shared_access_key_enabled = true` on the storage account.** **Resolved:**
-   flipped to `false`. The provider itself now authenticates to the storage
-   data plane via Azure AD (`storage_use_azuread = true` in `main.tf`'s
-   provider block) through a new `deployer_storage_blob_contributor` RBAC
-   grant (`storage.tf`), rather than falling back to the account key - no
-   shared key exists anywhere in this stack now, matching the Key Vault's
-   RBAC-only posture. One caveat found in the provider's own docs, not
-   assumed: changing (not creating) a container's `container_access_type`
-   always falls back to Shared Key, which no longer exists here - noted
-   in `storage.tf` directly above the two container resources. The storage
-   over-privilege itself is still a documented (not live-exercised)
-   finding in this project's current scope, since none of the eight MCP
-   tools reads storage.
+4. **The storage account, and its parallel over-scoped-grant demo.**
+   **Resolved by removal:** `storage.tf` (the account, its two containers,
+   `shared_access_key_enabled = false` + `storage_use_azuread`, and the
+   `agent_storage_readwrite` / `agent_storage_read_scoped` role assignments
+   in `identity.tf`) has been removed entirely. It was never exercised by
+   any of the eight MCP tools - the "storage pivot" stayed narrative, not
+   demonstrated - and the one thing that would have made it demonstrable
+   (fixing the networking gap below) meant standing up VNet integration
+   + a continuously-billed static IP/Load Balancer for a stretch-goal
+   lesson the live Key Vault chain doesn't depend on. See the project
+   owner's call in the README/this file's intro note above. If a future
+   iteration wants a second, independent least-privilege demo, revisit
+   this decision rather than assume storage is gone for good.
 5. **Model choice (`gpt-4o-mini` default).** Unchanged; revisit once the
    orchestrator's walkthrough is run against a live deployment.
 
-## Known gap: storage network ACL would block the agent's own "legitimate" tool if it's ever built
+## Former known gap: storage network ACL (resolved by removing storage)
 
-Found by an `architecture-integrity-reviewer` pass, not yet fixed because
-nothing exercises it today: `storage.tf`'s `network_rules` firewalls the
-storage account to `local.allowed_source_cidrs` (the operator's IP) with
-`bypass = ["AzureServices"]`. That's the wrong caller for this resource -
-the agent's documented legitimate data source is the FAQ blob
-(`agent-tool-data/support_faq.txt`), which would be read by a tool running
-in the Container App, not by the operator, and a Container App's
-data-plane blob read is not covered by the `AzureServices` trusted-bypass
-list. `identity.tf`'s `agent_storage_read_scoped` grant (the correctly-scoped
-`Storage Blob Data Reader`, added alongside the over-scoped grant as a
-documented before/after) can't actually be demonstrated live until this is
-fixed too.
+An earlier revision of this file documented a real gap here: the storage
+account's `network_rules` firewalled it to the operator's IP, which would
+have blocked the Container App's own data-plane blob reads the moment a
+FAQ-lookup tool was built - and fixing it properly meant VNet-integrating
+the Container App Environment (a subnet-sizing/delegation decision with
+conflicting guidance between the azurerm provider's docs and Microsoft's
+own, plus a continuously-billed static IP + Load Balancer).
 
-This is latent, not live, because none of the eight MCP tools in
-`../mcp-server/server.py` reads storage yet (see design decision #4 above)
-- the "storage pivot" is still narrative, not demonstrated.
-
-**What the real fix costs (checked against current Microsoft Learn docs,
-2026-10-26, not assumed):** the available azurerm mechanism is
-`virtual_network_subnet_ids` on the storage account's `network_rules` (an
-Azure Storage *service endpoint*, not an IP allowlist, so it survives the
-Container App's outbound IP changing), paired with
-`infrastructure_subnet_id` on `azurerm_container_app_environment.main`. But
-giving the Container App Environment its own VNet integration isn't free or
-simple:
-
-- **Subnet sizing/delegation differ by environment type and the provider's
-  own docs disagree with Microsoft's.** The azurerm provider's
-  `container_app_environment` page states a `/21` minimum; Microsoft's
-  Container Apps networking docs say `/27` minimum **with mandatory
-  delegation to `Microsoft.App/environments`** for a workload-profile
-  environment (the current default), or `/23` minimum **with no delegation
-  allowed at all** for the legacy consumption-only environment type - this
-  stack doesn't declare which type it gets, so that would need pinning down
-  explicitly first.
-- **It adds standing cost this range's README doesn't currently budget
-  for.** Per Microsoft's docs, VNet-integrating a Container Apps environment
-  provisions a managed resource group with at least one standard **static
-  public IP** (for egress) and a **standard Load Balancer**, billed
-  continuously - on top of, not instead of, the Container App itself. That
-  changes this range's cost posture from "a small flat ACR fee" to
-  "meaningful standing infrastructure," which is a deliberate decision the
-  project owner should make, not something to default into.
-- **Private Endpoints** (the alternative `TODO` already called out on the
-  Foundry account in `ai_foundry.tf`) sidestep the delegation question but
-  still need the same dedicated subnet and carry their own per-endpoint
-  hourly charge.
-
-Given that cost/complexity and no live subscription available to verify
-either path actually plans and applies cleanly, this remains a `TODO (yours
-to complete)` rather than something implemented blind. Whoever builds the
-FAQ-lookup tool should decide workload-profile-with-delegation vs.
-consumption-only-without-delegation *first*, size the subnet accordingly,
-add the service endpoint, and budget for the new standing IP/LB cost before
-wiring it in.
+That whole problem is moot now: `storage.tf` and the role assignments that
+depended on it were removed entirely (see design decision #4 above), since
+nothing in this range ever exercised them live. If a future iteration
+reintroduces a storage-backed tool, re-derive the subnet/service-endpoint
+requirements from current Microsoft Learn docs rather than assuming this
+note is still accurate by then.

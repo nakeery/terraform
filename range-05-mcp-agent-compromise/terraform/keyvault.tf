@@ -29,7 +29,7 @@ resource "azurerm_key_vault" "main" {
   purge_protection_enabled = false
 
   # Deliberately NOT locked to local.allowed_source_cidrs (access.tf),
-  # unlike storage.tf and the Container App ingress. The operator never
+  # unlike the AI Foundry account and the Container App ingress. The operator never
   # calls this vault directly as part of the attack chain - only the MCP
   # server's read_secret tool does, from inside the Container App, over
   # that App's own outbound public IP, which isn't known at plan time and

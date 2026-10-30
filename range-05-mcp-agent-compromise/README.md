@@ -28,7 +28,7 @@ see [What's left](#whats-left-todo-yours-to-complete) below.
 
 **Difficulty**: Medium
 **Category**: AI / ML Security (agent & tool layer)
-**Services**: Azure AI Foundry (Cognitive Services account + project), Azure OpenAI (tool/function-calling model deployment), Azure AI Content Safety (Prompt Shields), Azure Container Apps, Azure Container Registry, Azure Key Vault, Azure Storage, Managed Identity, Log Analytics
+**Services**: Azure AI Foundry (Cognitive Services account + project), Azure OpenAI (tool/function-calling model deployment), Azure AI Content Safety (Prompt Shields), Azure Container Apps, Azure Container Registry, Azure Key Vault, Managed Identity, Log Analytics
 **Vulnerability classes**: Prompt Injection - indirect (tool-output) and direct (jailbreak), Overprivileged Managed Identity / Excessive Agency, Tool Description Poisoning, Confused Deputy, Rug Pull (tool definition mutation), System Prompt Leakage
 **Framework mappings**: MITRE ATLAS, OWASP Top 10 for LLM Applications (2025), OWASP Top 10 for Agentic Applications (2025) — see [`solution/walkthrough.md`](solution/walkthrough.md#mitre-atlas-mapping)
 
@@ -38,9 +38,8 @@ see [What's left](#whats-left-todo-yours-to-complete) below.
 
 An internal IT support agent is built on Azure AI Foundry. Its tools are
 served by a standalone MCP server. The agent's **stated job** is narrow: look
-up ticket status, and — per its one legitimate data tool — answer questions
-from a single FAQ blob in storage. It never writes anything, and it never
-touches Key Vault.
+up ticket status for whoever asks. It never writes anything outside a ticket,
+and it never touches Key Vault.
 
 The agent's backing identity doesn't match that job:
 
@@ -108,20 +107,15 @@ the ticket the secret gets posted back to.
   (`internal-billing-db-connection-string`) the agent has no legitimate
   reason to ever read — its value carries a per-deployment flag
   (`range-05-flag-<suffix>`) as the checkable "you got it" signal.
-- A **storage account** (`storage.tf`) with two containers: `agent-tool-data`
-  (the FAQ blob the agent's tool is actually supposed to read) and
-  `sensitive-customer-records` (a fake customer export the over-scoped
-  identity can also reach, read **and** write).
 - A **Container App** (`container_app.tf`) that hosts the real MCP server
   (`../mcp-server`) with the over-scoped identity attached — this is where
   the vulnerability is actually exercised, not just documented — plus the
   Container Registry, Log Analytics workspace, and Container App
   Environment it needs.
-- An **operator-IP allowlist** (`access.tf`) applied to the storage account,
-  the Foundry account, and the Container App's ingress — deliberately **not**
-  applied to Key Vault, since the only caller that matters there is the
-  Container App's own outbound traffic, not the operator (see the comment in
-  `keyvault.tf`).
+- An **operator-IP allowlist** (`access.tf`) applied to the Foundry account
+  and the Container App's ingress — deliberately **not** applied to Key
+  Vault, since the only caller that matters there is the Container App's own
+  outbound traffic, not the operator (see the comment in `keyvault.tf`).
 - An **MCP server** (`../mcp-server/server.py`) exposing eight tools: two
   reconnaissance/payload-delivery primitives (`list_tickets`,
   `submit_ticket` — the discovery arc below), three that make up the
@@ -153,18 +147,13 @@ actually exercised). It holds:
 1. **`Key Vault Secrets User` on the whole vault** — every secret, not one
    scoped to a real need. The correctly-scoped answer is no Key Vault grant
    at all.
-2. **`Storage Blob Data Contributor` — read *and* write — at the storage
-   account scope**, not the one container (`agent-tool-data`) the tool
-   actually reads. That one grant also reaches the sibling
-   `sensitive-customer-records` container, with write/delete, when the tool
-   only ever needs read access to one blob in one container.
 
 This mirrors range-04's over-privileged Lambda execution role: least
 privilege was skipped at design time "because the agent might need it
-eventually," and the grant landed at the account/vault level instead of on
-the one object the stated job touches. The trigger is different — range-04's
-is a poisoned knowledge-base document; this range has no document store, so
-the trigger is the agent's tool-calling path itself.
+eventually," and the grant landed at the vault level instead of on nothing at
+all, which is what the stated job requires. The trigger is different —
+range-04's is a poisoned knowledge-base document; this range has no document
+store, so the trigger is the agent's tool-calling path itself.
 
 ---
 
@@ -275,8 +264,8 @@ as a low-privilege support requester: you can list tickets, read them, file
 new ones (`list_tickets`/`get_ticket_status`/`submit_ticket`, callable
 directly via `orchestrator/mcp_client.py`, no LLM needed), and ask the
 support assistant questions (`orchestrator/agent_loop.py`, authenticated
-with your own Azure CLI login) — you are never handed Key Vault or Storage
-access directly, and nobody hands you a working ticket ID either.
+with your own Azure CLI login) — you are never handed Key Vault access
+directly, and nobody hands you a working ticket ID either.
 
 ## Your Goal
 
@@ -297,8 +286,8 @@ discovery path.
 ### Prerequisites
 - Terraform >= 1.5.0
 - Azure CLI, logged in (`az login`) with rights to create resource groups,
-  Key Vault, Storage, Cognitive Services, and Container Apps resources in
-  the target subscription.
+  Key Vault, Cognitive Services, and Container Apps resources in the target
+  subscription.
 - A region with Azure AI Foundry Agent Service, tool/function-calling model
   deployments, and the Content Safety `Indirect Attack` filter available —
   this range defaults to `eastus2` (`variables.tf`); re-check regional
@@ -319,8 +308,8 @@ terraform init
 terraform apply
 ```
 
-The storage account, Foundry account, and Container App ingress are
-auto-locked to your current public IP (via `data.http.my_ip`); override with
+The Foundry account and Container App ingress are auto-locked to your
+current public IP (via `data.http.my_ip`); override with
 `-var='allowed_source_cidrs=["YOUR_IP/32"]'` if you're applying and walking
 the chain from different networks. Key Vault is deliberately **not**
 IP-restricted — see the comment in `keyvault.tf`.
@@ -366,30 +355,17 @@ thread.
 Left deliberately unfinished, same house convention as the other ranges'
 stretch goals:
 
-- **`storage.tf`** — ✅ `shared_access_key_enabled` is now `false`; the
-  provider authenticates to the storage data plane via Azure AD
-  (`storage_use_azuread` in `main.tf`, backed by a new deployer RBAC grant)
-  instead of an account key. No shared key exists anywhere in this stack
-  now, matching the Key Vault's posture.
-- **`identity.tf`** — ✅ the *correctly*-scoped `Storage Blob Data Reader`
-  grant (`agent_storage_read_scoped`, on `azurerm_storage_container.tool_data`
-  alone) now exists alongside the over-scoped one, as a documented
-  before/after. What's still yours to complete: comment out (or destroy)
-  the over-scoped `agent_storage_readwrite` grant, re-apply, and re-run the
-  walkthrough to show the tool still works on the scoped grant alone —
-  true least privilege, demonstrated live. **Blocked on a known gap until
-  then:** `storage.tf`'s network rule firewalls to the operator's IP with
-  only an `AzureServices` bypass, which doesn't cover the Container App's
-  own data-plane blob reads. The real fix (a dedicated subnet + storage
-  service endpoint) is more involved than it looks — it needs the Container
-  App Environment's workload-profile-vs-consumption-only type pinned down
-  first (different subnet size *and* opposite delegation rules apply), and
-  it adds a standing public-IP + load-balancer cost this range doesn't
-  currently budget for. See `terraform/NOTES.md`, "Known gap," for exactly
-  what was checked against current docs.
-- **`ai_foundry.tf`** — create the actual Agent object + its one
-  FAQ-lookup tool/function definition via the Foundry Agents SDK/REST API,
-  once the Terraform side is applied.
+- **`storage.tf`** — removed. An earlier revision provisioned a storage
+  account to carry a second, independent least-privilege demo (an
+  over-scoped vs. correctly-scoped storage grant, alongside the Key Vault
+  one), but no MCP tool ever read it, so the demo stayed narrative, and
+  fixing the networking gap that blocked it live meant standing up VNet
+  integration + a continuously-billed static IP/Load Balancer for a
+  stretch goal the primary chain doesn't need. See `terraform/NOTES.md`
+  for the full writeup and what it would take to reintroduce it later.
+- **`ai_foundry.tf`** — create the actual Agent object + a tool/function
+  definition for its ticket-status lookup via the Foundry Agents SDK/REST
+  API, once the Terraform side is applied.
 - **`ai_foundry.tf`** — Private Endpoints + VNet integration for the Foundry
   account, matching the networking lockdown already done for ranges 01/02.
 - **`orchestrator/agent_loop.py`** — swap the direct chat-completions loop
@@ -401,8 +377,8 @@ stretch goals:
 ## Cost
 
 **Low, but not literally zero while standing — unlike [range-03](../range-03-iam-privilege-escalation/README.md)/[range-04](../range-04-bedrock-rag-injection/README.md).**
-Most of this stack is pay-per-use (Foundry model token billing, Key
-Vault/Storage per-operation charges), but two pieces bill continuously once
+Most of this stack is pay-per-use (Foundry model token billing, Key Vault
+per-operation charges), but two pieces bill continuously once
 deployed: the Container App is pinned to exactly one replica
 (`min_replicas = 1`, `max_replicas = 1` — it never scales to zero, by design,
 since the mock ticket/secret/comment state the walkthrough depends on is
@@ -460,8 +436,7 @@ yourself first.
 The root causes that make this scenario possible:
 
 1. **Over-scoped managed identity** — the agent's tool backend can read
-   every Key Vault secret and read/write the whole storage account, when its
-   stated job needs neither.
+   every Key Vault secret when its stated job needs none at all.
 2. **No distinction between data and instructions in tool output** — the
    agent (and the system prompt it's given) trusts ticket text as context,
    not as untrusted, attacker-reachable input.

@@ -38,16 +38,6 @@ output "key_vault_name" {
   value       = azurerm_key_vault.main.name
 }
 
-output "storage_account_name" {
-  description = "Name of the storage account holding the agent's legitimate tool data and the fake sensitive dataset (pivot target)"
-  value       = azurerm_storage_account.main.name
-}
-
-output "sensitive_container_name" {
-  description = "Container holding the fake sensitive dataset the agent's identity can reach but its stated job never needs"
-  value       = azurerm_storage_container.sensitive_data.name
-}
-
 output "mcp_server_registry_name" {
   description = "Container Registry to push the real mcp-server image to (az acr build --registry <this> --image mcp-server:latest ../mcp-server), then re-apply/restart the Container App revision"
   value       = azurerm_container_registry.main.name
@@ -59,7 +49,7 @@ output "mcp_server_url" {
 }
 
 output "allowed_source_cidrs" {
-  description = "CIDR(s) the storage account, AI Foundry account, and MCP server Container App are restricted to (auto-detected operator IP unless overridden)"
+  description = "CIDR(s) the AI Foundry account and MCP server Container App are restricted to (auto-detected operator IP unless overridden)"
   value       = local.allowed_source_cidrs
 }
 

@@ -68,7 +68,7 @@ resource "azurerm_cognitive_account" "foundry" {
   # orchestrator (orchestrator/agent_loop.py) calls this account's chat-
   # completions endpoint directly from wherever the operator runs it, so
   # this is the actual "front door" worth restricting, same reasoning as
-  # the storage account and the Container App ingress below.
+  # the Container App ingress below.
   # TODO (yours to complete): go further still - a private endpoint +
   # VNet, matching the networking lockdown already done for ranges 1 & 2
   # - and re-verify the model deployment still works over the private
@@ -181,12 +181,12 @@ resource "azurerm_cognitive_deployment" "agent_model" {
 }
 
 # TODO (yours to complete): create the Agent object + its single
-# tool/function definition (the FAQ-lookup tool described in
+# tool/function definition (the ticket-status lookup tool described in
 # identity.tf) via the Azure AI Foundry Agents SDK or REST API
 # (POST {project endpoint}/assistants, api-version per the current
 # Foundry Agents REST reference) against
 # azurerm_cognitive_account_project.support_agent's endpoint, once
-# this stack is applied. Give the agent ONLY the FAQ-lookup tool
+# this stack is applied. Give the agent ONLY the ticket-status tool
 # in its manifest - the point of this range is that the identity
 # behind it is over-scoped regardless of how narrow the tool
 # manifest is kept.
