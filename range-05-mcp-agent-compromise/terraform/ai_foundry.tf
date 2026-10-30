@@ -1,5 +1,5 @@
 # =======================================================
-# ATTACK CHAIN STEP 2 - THE AGENT (Azure AI Foundry / Azure OpenAI)
+# THE AGENT (Azure AI Foundry / Azure OpenAI)
 #
 # Azure AI Foundry account configured for project management (the
 # modern Foundry resource shape - NOT the legacy Hub/Workspace

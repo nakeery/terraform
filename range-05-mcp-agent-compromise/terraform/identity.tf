@@ -1,10 +1,13 @@
 # =======================================================
-# ATTACK CHAIN STEP 1 - THE OVER-SCOPED AGENT IDENTITY
+# THE OVER-SCOPED AGENT IDENTITY
 #
-# THE VULNERABILITY: a single user-assigned managed identity,
-# attached to the Azure AI Foundry account that hosts the agent (see
-# ai_foundry.tf), holding far more than the agent's stated job
-# requires:
+# THE VULNERABILITY: a single user-assigned managed identity, attached
+# to the Azure AI Foundry account that hosts the agent (ai_foundry.tf)
+# AND to the Container App that runs the MCP server (container_app.tf),
+# holding far more than the agent's stated job requires. The Foundry
+# attachment is documented-but-dead wiring (see the comment in
+# ai_foundry.tf); the Container App attachment is the one actually
+# exercised - it's that identity read_secret calls Key Vault as.
 #
 #   Agent's stated job: look up ticket status for support requesters.
 #   That is the whole job. It never needs to write anything outside a

@@ -18,9 +18,12 @@ The agent's **stated job**, as modeled in `identity.tf`'s header comment: look
 up ticket status for support requesters. That's the entire job. It never
 writes anything outside a ticket, and it never touches Key Vault.
 
-What `azurerm_user_assigned_identity.agent` actually holds, attached directly to
-the Foundry account (`azurerm_cognitive_account.foundry`) via its `identity {}`
-block:
+What `azurerm_user_assigned_identity.agent` actually holds, attached to both
+the Foundry account (`azurerm_cognitive_account.foundry`, via its `identity {}`
+block - documented-but-dead wiring, see the comment in `ai_foundry.tf`) and
+the Container App that runs the MCP server (`container_app.tf` - the
+attachment actually exercised, since that's the identity `read_secret` calls
+Key Vault as):
 
 1. **`Key Vault Secrets User` on the whole vault** (`azurerm_key_vault.main`).
    The agent has no legitimate reason to resolve *any* Key Vault secret - the

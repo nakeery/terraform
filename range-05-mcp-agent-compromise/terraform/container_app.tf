@@ -1,5 +1,5 @@
 # =======================================================
-# ATTACK CHAIN STEP 3 - THE MCP SERVER'S COMPUTE
+# THE MCP SERVER'S COMPUTE
 #
 # Hosts the MCP server (../mcp-server) that owns read_secret - this is
 # "the agent's compute" the over-scoped UAMI (identity.tf) is actually
